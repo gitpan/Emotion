@@ -150,14 +150,15 @@ our $cregex = do {
 	    if (($opt_context and exists $o->{context}) or
 		($opt_re and exists $o->{re}) or
 		exists $o->{echo} or
-		exists $o->{amend})
+		exists $o->{amend} or
+		exists $o->{revoke})
 	    {
 		characters($out, '(');
 		my $space;
 		my @todo;
 		push @todo, 'context' if $opt_context;
 		push @todo, 're' if $opt_re;
-		push @todo, 'echo', 'amend';
+		push @todo, 'echo', 'amend', 'revoke';
 		for my $ref (@todo) {
 		    next if !exists $o->{$ref};
 		    my $l = $o->{$ref};

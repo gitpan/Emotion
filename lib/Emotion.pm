@@ -17,7 +17,7 @@
 
 use strict;
 package Emotion;
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 
 our $Stem;
 our $DialogID;
@@ -248,11 +248,15 @@ sub new {
 	    $expat->xpcroak("$i1 kept the initiative")
 	}
 
-	$expat->xpcarp($re->initiator." not in re")
-	    if $re->initiator ne $o->victim;
-	my $v = $re->victim;
-	$expat->xpcarp("$v not in re")
-	    if $v ne '*' && $v ne $o->initiator;
+	$i1 = $re->initiator;
+	my $v1 = $re->victim;
+	$i2 = $o->initiator;
+	my $v2 = $o->victim;
+
+	$expat->xpcarp("`$i1' (not `$v2') in re")
+	    if $v2 ne '*' && $i1 ne $v2;
+	$expat->xpcarp("`$i2' (not `$v1') in re")
+	    if $v1 ne '*' && $v1 ne $i2;
     }
 
     if (exists $o->{amend}) {
@@ -285,12 +289,16 @@ sub new {
 	}
     }
     if (exists $o->{re}) {
-	my $label = $o->{re}->label;
+	my $re = $o->{re};
+	my $label = $re->label;
 	if (delete $Open{ $label }) {
 	    # OK
 	} else {
-	    my $an = $o->{re};
-	    if ($an->{type} eq 'admires' and $an->{before}) {
+	    if ($re->{type} eq 'admires' and $re->{before}) {
+		# OK
+	    } elsif ($re->{type} eq 'observes') {
+		# OK
+	    } elsif ($re->victim eq '*') {
 		# OK
 	    } else {
 		$expat->xpcarp("amend $label");
@@ -298,15 +306,18 @@ sub new {
 	}
     }
 
+    # should compress this somewhat XXX
     if (exists $o->{absent}) {
-	# OK
-    } elsif (exists $o->{closing}) {
 	# OK
     } elsif ($type =~ m/^(observes|uneasy|ready)$/) {
 	# OK
     } elsif ($type eq 'accepts' and exists $o->{tension}) {
 	# OK
+    } elsif ($type eq 'steals' and exists $o->{tension}) {
+	# OK
     } elsif ($type eq 'admires' and exists $o->{before}) {
+	# OK
+    } elsif ($type eq 'accepts' and exists $o->{after}) {
 	# OK
     } else {
 	$Open{ $o->label } = $o;
@@ -488,13 +499,17 @@ sub emotion {
 		    'angry at thief';
 		} elsif ($te eq 'stifled') {
 		    'angry with his/her self';
-		} else { '?' }
+		} else {
+		    'detached indifference';
+		}
 	    } elsif ($aty eq 'accepts' and exists $re->{before}) {
 		if ($te eq 'focused') {
 		    'accusal';
 		} elsif ($te eq 'stifled') {
 		    'grudging compliance'
-		} else { '?' }
+		} else {
+		    'detached indifference';
+		}
 	    } elsif ($aty eq 'exposes') {
 		if ($te eq 'focused') {
 		    'doubtless righteousness';
@@ -717,11 +732,11 @@ sub emotion {
 	    }
 	} else {
 	    if ($te eq 'focused') {
-		'stubborn / frustrated / indignant';
+		'indignant / frustrated / stubborn';
 	    } elsif ($te eq 'relaxed') {
 		'probe / sincere and balanced concern';
 	    } else {
-		'separation';
+		'procrastinate / separation';
 	    }
 	}
     } else { '?' }

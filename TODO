@@ -1,7 +1,3 @@
-closing="tension" -- inflect the previous situation (?)
-
-context must accept multiple situations? (answer too?)
-
 formalize wildcard victim "*"
 
 duration index
@@ -10,9 +6,11 @@ duration index
 
 exposes -> observes -> exposes =? taunting
 
-rename "context"?
-
 "echo" is too specific?
+
+context
+  rename?
+  accept multiple situations?
 
 <alias newtag="demands" basetag="accepts" before="focused" initiator="right"
 />

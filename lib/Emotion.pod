@@ -218,7 +218,7 @@ Or:
 Notice that similar replies could be expected from the non-question
 demand, "I want the teddy bear."  For example, C<accepts> ("OK, here
 it is.") or C<impasse> ("Which teddy bear?").  While the question mark
-accents the demand somehow, its presence or absence does not seem
+inflects the demand somehow, its presence or absence does not seem
 particularly significant in the context of competition.
 
 The answer side of Q&A will now be considered.  Answers are generally
@@ -298,7 +298,9 @@ is exactly one emotion?
 
 =item * Does it span the entire duration of the emotion?
 
-This duration criteria is consided in the next section, "Resolution."
+Some clarity is lost if a single emotion is sub-divided excessively.
+A single annotation should span as much time as is practical.  The
+duration criteria is also consided in the next section, "Resolution."
 
 =back
 
@@ -349,7 +351,7 @@ C<ready> is one of them.
     Does anyone know the time?
   </accepts>
 
-(Talking about anthropomorphic rivals.)
+Talk about anthropomorphic rivals. XXX
 
 =head2 Context
 
