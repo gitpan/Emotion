@@ -12,11 +12,12 @@
 
 use strict;
 package Emotion;
-our $VERSION = '0.03';
+our $VERSION = '0.05';
 
 our $Stem;
-our %Link;  # resolve symbolic link
 our $DialogID;
+our %Link;  # resolve symbolic links
+our %Open;  # by label
 
 sub set_transcript {
     my ($xml) = @_;
@@ -26,6 +27,7 @@ sub set_transcript {
 	if $stem !~ s/\.xml$//;
     $Stem = $stem;
     %Link = ();
+    %Open = ();
     $DialogID=0;
 }
 
@@ -39,6 +41,8 @@ sub set_speaker {
     ++$DialogID;
 }
 
+sub unresolved { values %Open }
+
 our %TypeCode = (destroys => 0,
 		 steals => 1,
 		 uneasy => 2,
@@ -50,6 +54,7 @@ our %TypeCode = (destroys => 0,
 		 ready => 8);
 
 package Emotion::Atom;
+use Emotion::Constants qw(L R);
 
 sub new {
     my ($class, $expat, $attr) = @_;
@@ -61,6 +66,31 @@ sub new {
 
     my $type = $o->{type};
 
+    my $id = $o->{id};
+    if ($id) {
+	$expat->xpcroak("Link `$id' doesn't match \\w+")
+	    if ($id !~ m/^\w+$/);
+
+	if (exists $Link{$id}) {
+	    my $try = $id;
+	    ++$try while exists $Link{$try};
+	    $expat->xpcroak("Link collision with `$id' at talk $Link{$id}{dialog_id}, try `$try'");
+	}
+	$Link{$id} = $o;
+    }
+	
+    $expat->xpcroak("reply renamed to answer")
+	if exists $o->{reply};
+
+    for my $kind (qw(revoke closing context answer)) {
+	next if !exists $o->{$kind};
+	my $to = $o->{$kind};
+	$o->{$kind} = $Link{$to};
+	$expat->xpcroak("broken $kind link `$to'")
+	    if !$o->{$kind};
+    }
+
+    # tension & intensity
     if ($type =~ m/^(steals|exposes|admires|accepts)$/) { #spin
 	my $before = $o->{before};
 	my $after = $o->{after};
@@ -90,54 +120,66 @@ sub new {
     } else { #destroys
 	$expat->xpcroak("no intensity needed")
 	    if exists $o->{intensity};
+	$expat->xpcroak("no tension needed")
+	    if exists $o->{tension};
     }
 	
-    my $id = $o->{id};
-    if ($id) {
-	if (exists $Link{$id}) {
-	    my $try = $id;
-	    ++$try while exists $Link{$try};
-	    $expat->xpcroak("Link collision with `$id' at talk $Link{$id}{dialog_id}, try `$try'");
-	}
-	$Link{$id} = $o;
-    }
-	
-    if (exists $o->{reply}) {
-	$o->{answer} = delete $o->{reply};
-	warn "reply renamed to answer";
+    if (exists $o->{initiative}) {
+	$expat->xpcarp("initiative renamed to initiator");
+	$o->{initiator} = delete $o->{initiative};
     }
 
-    for my $kind (qw(context answer)) {
-	next if !exists $o->{$kind};
-	my $to = $o->{$kind};
-	$o->{$kind} = $Link{$to};
-	$expat->xpcroak("broken $kind link `$to'")
-	    if !$o->{$kind};
+    if ($type =~ m/^(impasse|destroys)$/) {
+	$expat->xpcroak("initiator is always left")
+	    if exists $o->{initiator};
+	$o->{initiator} = 'left';
+    } elsif (exists $o->{initiator}) {
+	my $i = $o->{initiator};
+	if (exists $o->{left} xor exists $o->{right}) {
+	    if (exists $o->{left}) {
+		$o->{right} = $i;
+		$o->{initiator} = 'right';
+	    } else {
+		$o->{left} = $i;
+		$o->{initiator} = 'left';
+	    }
+	}
+	$expat->xpcroak("initiator `$o->{initiator}' is left or right?")
+	    if $o->{initiator} !~ m/^(left|right)$/;
+    }
+
+    for my $role (qw(left right)) {
+	next if exists $o->{$role};
+	$o->{$role} = $Speaker;
+	$o->{initiator} ||= $role
+	    if $type !~ m/^(ready|observes|uneasy|impasse|destroys)$/;
+    }
+
+    if (exists $o->{absent}) {
+	$expat->xpcroak("$o->{absent} can't be absent")
+	    if $type =~ m/^(ready|observes|uneasy|impasse|destroys)$/;
+	$expat->xpcroak("initiator is absent?")
+	    if $o->{absent} eq $o->{initiator};
+	$expat->xpcroak("absent `$o->{absent}' is left or right?")
+	    if $o->{absent} !~ m/^(left|right)$/;
+    }
+
+    if ($type eq 'ready') {
+	$expat->xpcroak("ready is not initiated")
+	    if exists $o->{initiator};
+    } elsif ($type =~ m/^(observes|uneasy)$/) {
+	# OK
+    } else {
+	my $i = $o->{initiator} || 'undef';
+	$expat->xpcroak("initiator `$i' is left or right?")
+	    if $i !~ m/^(left|right)$/;
     }
 
     $expat->xpcroak("left and right are missing")
 	if !exists $o->{left} && !exists $o->{right};
 
-    for my $role (qw(left right)) {
-	next if exists $o->{$role};
-	$o->{$role} = $Speaker;
-	$o->{initiative} ||= $role
-	    if $type !~ m/^(ready|observes|uneasy|impasse|destroys)$/;
-    }
-
     $expat->xpcroak("$o->{left} competing with himself/herself")
 	if $o->{left} eq $o->{right};
-	
-    if ($type =~ m/^(ready|observes|uneasy|impasse|destroys)$/) {
-	$expat->xpcroak("initiative is unnecessary")
-	    if exists $o->{initiative};
-    } else {
-	$expat->xpcroak("initiative?")
-	    if !exists $o->{initiative};
-	my $init = $o->{initiative};
-	$expat->xpcroak("left or right?")
-	    if $init !~ m/^(left|right)$/;
-    }
 	
     if (exists $o->{answer}) {
 	my $re = $o->{answer};
@@ -153,21 +195,63 @@ sub new {
 	my $i2 = $o->initiator;
 
 	if (!$i1 and !$i2) {
-	    $expat->xpcarp("who has initiative?");
+	    $expat->xpcarp("who has initiator?");
 	} elsif (defined($i1) xor defined($i2)) {
-	    # implied; OK
+	    if ($i1) {
+		$o->{initiator} = $i1 eq 'left'? 'right':'left';
+	    } else {
+		$re->{initiator} = $i2 eq 'left'? 'right':'left';
+	    }
 	} elsif ($i1 eq $i2) {
-	    $expat->xpcarp("$i1 kept the initiative")
+	    $expat->xpcarp("$i1 kept the initiator")
 	}
+    }
+
+    if (exists $o->{revoke}) {
+	my $oops = $o->{revoke};
+	my @open;
+	push @open, $oops->{closing} if
+	    exists $oops->{closing};
+	push @open, $oops->{answer} if
+	    exists $oops->{answer};
+	for my $z (@open) {
+	    $Open{ $z->label } = $z;
+	}
+    }
+
+    my @close;
+    push @close, $o->{revoke} if
+	exists $o->{revoke};
+    push @close, $o->{closing} if
+	exists $o->{closing};
+    push @close, $o->{answer} if
+	exists $o->{answer};
+    for my $cl (@close) {
+	my $label = $cl->label;
+	if (exists $Open{ $label }) {
+	    delete $Open{ $label }
+	} else {
+	    $o->{amend}{ $label } = 1;  # ??
+	    $expat->xpcarp("amend $label");
+	}
+    }
+
+    if ($type !~ m/^(observes|uneasy|ready)$/ and !exists $o->{absent}) {
+	$Open{ $o->label } = $o;
     }
 
     $o
 }
 
-sub initiator {
+sub label {
+    my ($l) = @_;
+    "$l->{dialog_id}.$l->{phrase_id}"
+}
+
+sub initiator {  # NUKE? XXX
     my ($o) = @_;
-    if (exists $o->{initiative}) {
-	$o->{ $o->{initiative} };
+    if (exists $o->{initiator}) {
+	$o->{ $o->{initiator} };
     } elsif ($o->{type} =~ m/^(impasse|destroys)$/) {
 	$o->{left};
     } else {
@@ -202,7 +286,7 @@ sub simple_hash {
     }
     
     if ($o->{type} =~ m/^(steals|exposes|admires|accepts)$/) {
-	push @k, substr $o->{initiative},0,1;
+	push @k, substr $o->{initiator},0,1;
     }
 
     join(':', @k)
@@ -211,14 +295,14 @@ sub simple_hash {
 sub hash {
     my ($o) = @_;
     my @a = $o->simple_hash;
-    for my $link (qw(answer context)) {
+    for my $link (qw(answer)) {
 	next if !exists $o->{$link};
 	push @a, substr($link,0,2) . ':' . $o->{$link}->simple_hash;
     }
     join ',', @a;
 }
 
-sub emotion {
+sub emotion {     # over-simplification
     my ($o) = @_;
     my $ty = $o->{type};
     my $answer;
@@ -227,14 +311,14 @@ sub emotion {
 	$answer = $o->{answer};
 	$aty = $answer->{type};
     }
-    my $context;
+    my $context;  # try to avoid for classification purposes
     my $cty = '';
     if (exists $o->{context}) {
 	$context = $o->{context};
 	$cty = $context->{type};
     }
     if ($ty eq 'exposes') {
-	if ($o->{initiative} eq 'left') {
+	if ($o->{initiator} eq 'left') {
 	    if (exists $o->{before}) {
 		my $te = $o->{before};
 		if ($te eq 'focused') {
@@ -281,7 +365,7 @@ sub emotion {
 	    } else { '?' }
 	}
     } elsif ($ty eq 'steals') {
-	if ($o->{initiative} eq 'left') {
+	if ($o->{initiator} eq 'left') {
 	    if (exists $o->{before}) {
 		my $te = $o->{before};
 		if ($te eq 'focused') {
@@ -324,7 +408,7 @@ sub emotion {
 	    } else { '?' }
 	}
     } elsif ($ty eq 'admires') {
-	if ($o->{initiative} eq 'right') {
+	if ($o->{initiator} eq 'right') {
 	    if (exists $o->{before}) {
 		my $te = $o->{before};
 		if ($te eq 'focused') {
@@ -353,11 +437,11 @@ sub emotion {
 	    } else { '?' }
 	}
     } elsif ($ty eq 'accepts') {
-	if ($o->{initiative} eq 'right') {
+	if ($o->{initiator} eq 'right') {
 	    if (exists $o->{before}) {
 		my $te = $o->{before};
 		if ($te eq 'focused') {
-		    'straightforward demand';
+		    'demand';
 		} elsif ($te eq 'relaxed') {
 		    'neutral probe';
 		} else {
@@ -462,14 +546,14 @@ sub emotion {
 	    }
 	} elsif ($aty eq 'accepts' and exists $answer->{before} and
 		 $answer->{before} eq 'focused' and
-		 $answer->{initiative} eq 'right') {
+		 $answer->{initiator} eq 'right') {
 	    my $in = $o->{intensity};
 	    if ($in eq 'gentle') {
 		'caught red-handed';
 	    } else { '?' }
 	} elsif ($aty eq 'accepts' and exists $answer->{before} and
 		 $answer->{before} eq 'focused' and
-		 $answer->{initiative} eq 'left') {
+		 $answer->{initiator} eq 'left') {
 	    my $in = $o->{intensity};
 	    if ($in eq 'gentle') {
 		'suspicious';
@@ -501,7 +585,7 @@ sub emotion {
     } elsif ($ty eq 'ready') {
 	my $in = $o->{intensity};
 	if ($in eq 'gentle') {
-	    'emotional turmoil';
+	    'emotional turmoil / paralysis';
 	} elsif ($in eq 'forceful') {
 	    'limbo';
 	} else {

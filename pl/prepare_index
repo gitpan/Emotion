@@ -23,7 +23,7 @@ use XML::Writer;
 use XML::Parser;
 use Emotion;
 
-our $VERSION = '2000.11.13';
+our $VERSION = '2000.11.14';
 
 while (@ARGV and $ARGV[0] =~ m/^-/) {
     my $opt = shift @ARGV;
@@ -129,7 +129,7 @@ sub show_atom {
 	$out->dataElement('b', "[+]");
 	$out->characters(" and [+] are at an impasse");
     } else {
-	my $init = $i->{initiative};
+	my $init = $i->{initiator};
 	my $pretty = $type;
 	$pretty = "steals from"
 	    if $pretty eq 'steals';
@@ -158,9 +158,13 @@ sub pair_index {
     $out->doctype("HTML", "-//W3C//DTD HTML 4.0 Transitional//EN", '');
     $out->startTag('HTML');
     $out->startTag('HEAD');
-    $out->dataElement('TITLE', "$Title Character Index");
+    $out->dataElement('TITLE', "$Title / Character Index");
     $out->endTag('HEAD');
     $out->startTag('BODY', bgcolor=>"#FFFFFF", text=>"#000000");
+
+    $out->dataElement('P', "All characters appearing in annotations are
+listed in alphabetical order.  Click on a character to see a list of
+rival counterparties.");
 
     $out->startTag('P');
     for my $who (sort keys %Character) {
@@ -168,6 +172,11 @@ sub pair_index {
 	$out->characters(' ');
     }
     $out->endTag;
+
+    $out->dataElement('P', "Each character is listed in order of
+frequency of his or her involvement in competition situations.
+Click on a counterparty to show grid offering links to the specific
+situations.");
 
     my @C = sort { $Character{$b} <=> $Character{$a} } keys %Character;
     for my $who (@C) {
@@ -182,6 +191,10 @@ sub pair_index {
 	$out->emptyTag('BR');
     }
 
+    $out->dataElement('P', "For each pair of rivals, their
+involvement in competition is organized by the initiator (shown in bold).
+Situations without a clear-cut initiator are listed in both tables.");
+
     for my $pair (sort keys %Pair) {
 	my $l = $Pair{$pair};
 	my $z = $l->[0];
@@ -189,11 +202,22 @@ sub pair_index {
 	$out->startTag('P');
 	for (my $rev=0; $rev <= 1; $rev++) {
 	    if ($rev) {
-		@pair = reverse @pair;
 		$out->emptyTag('BR');
 	    }
-	    $out->dataElement('A', join(' <---> ', @pair),
-			      NAME => join(':', @pair));
+	    $out->startTag('A', NAME => join(':', @pair));
+	    if (!$rev) {
+		$out->dataElement('B', $pair[0]);
+	    } else {
+		$out->characters($pair[0]);
+	    }
+	    $out->characters(' <---> ');
+	    if ($rev) {
+		$out->dataElement('B', $pair[1]);
+	    } else {
+		$out->characters($pair[1]);
+	    }
+	    $out->endTag('A');
+
 	    $out->startTag('TABLE', BORDER => 1);
 	    my @todo = qw(destroys exposes observes
 			  steals impasse accepts
@@ -292,10 +316,6 @@ sub emotion_index {
 	if (exists $i->{answer}) {
 	    $out->dataElement('I', ' answering ');
 	    show_atom($out, $i->{answer});
-	}
-	if (exists $i->{context}) {
-	    $out->dataElement('I', ' in the context of ');
-	    show_atom($out, $i->{context});
 	}
 
 	for my $o (@$list) {

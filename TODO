@@ -1,0 +1,8 @@
+context and closing must accept multiple situations (answer too?)
+
+rename "context"?
+
+convert left/right -> L/R
+
+impasse id=a1
+impasse echo=a1 absent=right

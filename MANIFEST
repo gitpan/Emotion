@@ -2,6 +2,9 @@ COPYING
 MANIFEST
 MANIFEST.SKIP
 README
+TODO
 lib/Emotion.pm
+lib/Emotion.pod
+lib/Emotion/Constants.pm
 pl/prepare_index
 pl/prepare_transcript

@@ -1,0 +1,180 @@
+=head1 NAME
+
+Emotion - discrete emotion annotation processing library
+
+=head1 SYNOPSIS
+
+This document describes the XML representation of 3rd person
+annotations, validation rules, and how the information is represented
+in perl for further processing.
+
+=head1 DESCRIPTION
+
+The minimum situation consists of the type of competition and two
+opponents.
+
+  abbreviation  type of competition (situation)
+  ------------  -------------------------------
+  destroys      [-] destroys [-]
+  steals        [-] steals from [+]
+  uneasy        [-] is made uneasy by [0]
+  exposes       [+] exposes [-]
+  impasse       [+] and [+] are at an impasse
+  admires       [+] admires [0]
+  observes      [0] observes [-]
+  accepts       [0] accepts [+]
+  ready         [0] and [0] are at readiness
+
+Each opponent is labelled either C<left> or C<right>, indicating on
+which side of the situation he or she participates.  For example:
+
+  <observes left="student" right="teacher">
+    A student watches the teacher make a presentation.
+  </observes>
+
+  <observes right="student" left="teacher">
+    The teacher watches a student make a presentation.
+  </observes>
+
+Of course a teacher is probably much more relaxed lecturing in front
+of a class than a student.  This information can be captured by
+the C<intensity> attribute:
+
+  <observes left="student" right="teacher" intensity="gentle">
+    A student watches the teacher make a presentation.
+  </observes>
+
+  <observes right="student" left="teacher" intensity="forceful">
+    The teacher watches a student make a presentation.
+  </observes>
+
+Since no spin is involved, the emotion is roughly the same regardless
+of whether we empathize with the teacher or the student.  To contrast,
+situations involving spin require some additional structure.  For
+example:
+
+  <steals left="thief" right="child">
+    The thief steals the teddy bear from the child's passionate grip.
+  </steals>
+
+Here it is not clear which emotion is intended.  Opponents experience
+the situation very differently.  Perhaps the thief is drunk with
+accomplishment, but the child is probably quite angry.  To avoid this
+ambiguity, situations involving spin follow a transactional pattern:
+
+  initiator:   (1) before ---+---> (3) after
+                             |
+                             v
+  victim:             (2) tension
+
+Introduce id / answer XXX
+
+Here is a hypothetical trace of a C<steals> situation decomposed into
+the three transaction phases:
+
+  <steals left="thief" right="child" before="focused">
+    The thief eyes the teddy bear maliciously.
+  </steals>
+
+  <steals left="thief" right="child" tension="focused">
+    As the thief wrenches the teddy bear from the child's
+    passionate grip, she becomes furious and starts crying.
+  </steals>
+
+  <steals left="thief" right="child" after="focused">
+    The thief triumphantly stows the teddy bear in his backpack.
+  </steals>
+
+Perhaps this situation is ghastly, but the goal here is merely to model
+emotions accurately.  In this example, the three phases unambiguously
+correspond to "anxiety," "anger," and "drunk with accomplishment."
+
+The attributes C<before>, C<tension>, and C<after> describe the
+emotional tension.  Tension modifies the general emotion to fit
+the precise sitations.  For example:
+
+  <steals left="thief" right="child" before="relaxed">
+    The thief eyes the teddy bear with abandon.
+  </steals>
+
+  <steals left="thief" right="child" before="stifled">
+    The thief studies whether the teddy bear can be stolen.
+  </steals>
+
+A tension modifier is either C<focused>, C<relaxed>, or C<stifled>.
+Emotion correspondance charts can assist in fitting the most accurate
+modifier to the situation.  Of course a thief is not always
+successful:
+ 
+  <steals left="thief" right="child" before="stifled">
+    The thief studies whether the teddy bear can be stolen.
+  </steals>
+
+  <impasse left="child" right="thief" tension="focused">
+    The child notices the thief and grips the teddy
+    bear tightly.
+  </impasse>
+
+The four situations involving spin (C<steals>, C<exposes>, C<admires>,
+and C<accepts>) mostly follow the three phase transaction pattern.
+However, flexibility offered by C<accepts> shows the need to indicate
+an initiator.  For example:
+
+  <accepts left="chef" right="child" before="focused">
+    I am hungry.  Is dinner ready?
+  </accepts>
+
+  <accepts left="chef" right="child" before="focused">
+    You are hungry!
+  </accepts>
+
+Looking just at annotation, a reader cannot determine whether the
+child is making a demand, or the chef is voicing the child's facial
+expression of hunger.  An C<initiator> attribute eliminates the
+ambiguity:
+
+  <accepts left="chef" right="child" before="focused" initiator="right">
+    I am hungry.  Is dinner ready?
+  </accepts>
+
+  <accepts left="chef" right="child" before="focused" initiator="left">
+    You are hungry!
+  </accepts>
+
+Now the situations can be distinguish.  While the annotation is
+precise, it is also quite a lot of typing.  To reduce the burden of
+the analyst, the library is capable of guessing reasonable defaults by
+consideration of who is talking.  For example:
+
+  <talk who="child">
+    <accepts left="chef" before="focused">
+      I am hungry.  Is dinner ready?
+    </accepts>
+  </talk>
+
+Before venturing into layered combinations of situations, you might
+like to study a summary of the simple variations:
+
+  situation  variations
+  ---------- ---------------------------------
+  steals     before/tension/after, initiator
+  exposes    before/tension/after, initiator
+  admires    before/tension/after, initiator
+  accepts    before/tension/after, initiator
+  uneasy     intensity, [initiator]
+  impasse    intensity, [initiator]
+  observes   intensity, [initiator]
+  ready      intensity
+  destroys   N/A
+
+
+Another variation arises when people make silly comments about a
+person who isn't present to hear them.
+
+  <talk who="gossip1">
+    <accepts left="gossip2" before="focused">
+      <exposes right="June" before="focused" absent="right">
+        June's hair looks terrible!
+      </exposes>
+    </accepts>
+  </talk>
