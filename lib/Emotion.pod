@@ -36,9 +36,9 @@ which side of the situation he or she participates.  For example:
     The teacher watches a student make a presentation.
   </observes>
 
-Of course a teacher is probably much more relaxed lecturing in front
-of a class than a student.  This information can be captured by
-the C<intensity> attribute:
+Of course a teacher is probably more relaxed lecturing in front of a
+class than a student.  This information can be captured with the
+C<intensity> attribute:
 
   <observes left="student" right="teacher" intensity="gentle">
     A student watches the teacher make a presentation.
@@ -48,53 +48,54 @@ the C<intensity> attribute:
     The teacher watches a student make a presentation.
   </observes>
 
-Since no spin is involved, the emotion is roughly the same regardless
-of whether we empathize with the teacher or the student.  To contrast,
-situations involving spin require some additional structure.  For
-example:
+Now it is clear that the teacher's presentation involves some gentle
+excitement, but a student presentation is an exciting test of
+self-control.  Since no spin is involved, the emotion is roughly the
+same regardless of whether we empathize with the presenter or the
+audience.  To contrast, situations involving spin require some
+additional structure.  For example:
 
   <steals left="thief" right="child">
-    The thief steals the teddy bear from the child's passionate grip.
+    The thief steals the teddy bear from the child.
   </steals>
 
 Here it is not clear which emotion is intended.  Opponents experience
 the situation very differently.  Perhaps the thief is drunk with
 accomplishment, but the child is probably quite angry.  To avoid this
-ambiguity, situations involving spin follow a transactional pattern:
+ambiguity, situations involving spin follow a transactional structure:
 
   initiator:   (1) before ---+---> (3) after
                              |
                              v
   victim:             (2) tension
 
-Introduce id / answer XXX
-
 Here is a hypothetical trace of a C<steals> situation decomposed into
 the three transaction phases:
 
   <steals left="thief" right="child" before="focused">
-    The thief eyes the teddy bear maliciously.
+    The thief eyes the teddy bear maliciously and wrenches it
+    from the child's passionate grip.
   </steals>
 
   <steals left="thief" right="child" tension="focused">
-    As the thief wrenches the teddy bear from the child's
-    passionate grip, she becomes furious and starts crying.
+    The child becomes furious and starts crying.
   </steals>
 
   <steals left="thief" right="child" after="focused">
     The thief triumphantly stows the teddy bear in his backpack.
   </steals>
 
-Perhaps this situation is ghastly, but the goal here is merely to model
-emotions accurately.  In this example, the three phases unambiguously
-correspond to "anxiety," "anger," and "drunk with accomplishment."
+Perhaps this sequence of events is ghastly, but here the goal is
+merely to model emotions accurately.  In this example, the three
+phases unambiguously correspond to "anxiety," "anger," and "drunk with
+accomplishment."
 
 The attributes C<before>, C<tension>, and C<after> describe the
-emotional tension.  Tension modifies the general emotion to fit
-the precise sitations.  For example:
+emotional tension.  Tension modifies a general emotion to fit the
+precise situation.  For example:
 
   <steals left="thief" right="child" before="relaxed">
-    The thief eyes the teddy bear with abandon.
+    The thief grabs the teddy bear with abandon.
   </steals>
 
   <steals left="thief" right="child" before="stifled">
@@ -105,20 +106,20 @@ A tension modifier is either C<focused>, C<relaxed>, or C<stifled>.
 Emotion correspondance charts can assist in fitting the most accurate
 modifier to the situation.  Of course a thief is not always
 successful:
- 
+
   <steals left="thief" right="child" before="stifled">
     The thief studies whether the teddy bear can be stolen.
   </steals>
 
   <impasse left="child" right="thief" tension="focused">
-    The child notices the thief and grips the teddy
-    bear tightly.
+    The child notices suspicious behavior and grips the teddy
+    bear even more tightly.
   </impasse>
 
 The four situations involving spin (C<steals>, C<exposes>, C<admires>,
-and C<accepts>) mostly follow the three phase transaction pattern.
-However, flexibility offered by C<accepts> shows the need to indicate
-an initiator.  For example:
+and C<accepts>) mostly follow the three phase transaction structure.
+However, flexibility offered by C<accepts> shows the need to
+explicitly indicate an initiator.  For example:
 
   <accepts left="chef" right="child" before="focused">
     I am hungry.  Is dinner ready?
@@ -128,8 +129,8 @@ an initiator.  For example:
     You are hungry!
   </accepts>
 
-Looking just at annotation, a reader cannot determine whether the
-child is making a demand, or the chef is voicing the child's facial
+Looking just at the annotation, a reader cannot determine whether the
+child is making a demand, or the chef is voicing the child's
 expression of hunger.  An C<initiator> attribute eliminates the
 ambiguity:
 
@@ -142,9 +143,15 @@ ambiguity:
   </accepts>
 
 Now the situations can be distinguish.  While the annotation is
-precise, it is also quite a lot of typing.  To reduce the burden of
+precise, it is also quite a lot of typing.  To reduce the burden on
 the analyst, the library is capable of guessing reasonable defaults by
 consideration of who is talking.  For example:
+
+  <accepts left="chef" initiator="child" before="focused">
+    I am hungry.  Is dinner ready?
+  </accepts>
+
+Or alternately:
 
   <talk who="child">
     <accepts left="chef" before="focused">
@@ -152,21 +159,111 @@ consideration of who is talking.  For example:
     </accepts>
   </talk>
 
-Before venturing into layered combinations of situations, you might
-like to study a summary of the simple variations:
+We covered most of the simple variations.  Here is a summary:
 
   situation  variations
   ---------- ---------------------------------
-  steals     before/tension/after, initiator
-  exposes    before/tension/after, initiator
-  admires    before/tension/after, initiator
-  accepts    before/tension/after, initiator
-  uneasy     intensity, [initiator]
-  impasse    intensity, [initiator]
+  steals     before|tension|after, initiator
+  exposes    before|tension|after, initiator
+  admires    before|tension|after, initiator
+  accepts    before|tension|after, initiator
+  impasse    tension
   observes   intensity, [initiator]
+  uneasy     intensity, [initiator]
   ready      intensity
-  destroys   N/A
+  destroys   -
 
+The square brackets denote optional attributes.  More will be said
+about this later.
+
+=head2 Question and Answer
+
+Please consider a sample dialog:
+
+  (adult) Does your teddy bear have brown fur?
+  (child) Yes.
+
+How can the quality of a question and answer pair be modelled with the
+competition framework?
+
+  <accepts right="child" initiator="adult" before="focused">
+    Does your teddy bear have brown fur?
+  </accepts>
+
+  <accepts left="parent" initiator="child" before="focused">
+    Yes.
+  </accepts>
+
+Here the "question" is more like a demand that the child acknowledge
+understanding the statement, "teddy bear has brown fur."  And the
+child could easily responded differently.  For example:
+
+  <accepts right="child" initiator="adult" before="focused">
+    Does your teddy bear have brown fur?
+  </accepts>
+
+  <observes initiator="child" right="parent" intensity="forceful">
+    (silence)
+  </observes>
+
+In this case, the child (in effect) declined to accept the adult's
+question.  Notice that there is no indication of the question-answer
+relationship between the two scenarios.
+
+To encode question-answer relationship, we need some standard to
+recognize them.  Our constraint is that the C<left> and C<right>
+participants must match and the initiator must flip-flop.  These rules
+were found by surveying many question-answer exchanges and the rules
+seem to work well in practice.  The C<id> and C<answer> attributes
+encode this information as follows:
+
+  <accepts id="q1" right="child" initiator="adult" before="focused">
+    Does your teddy bear have brown fur?
+  </accepts>
+
+  <accepts answer="q1" left="parent" initiator="child" before="focused">
+    Yes.
+  </accepts>
+
+Here is a prior example updated with new markup:
+
+  <steals id="p1" initiator="thief" right="child" before="focused">
+    The thief eyes the teddy bear maliciously and wrenches it
+    from the child's passionate grip.
+  </steals>
+
+  <steals answer="p1" left="thief" initiator="child" tension="focused">
+    The child becomes furious and starts crying.
+  </steals>
+
+  <steals context="p1" initiator="thief" right="child" after="focused">
+    The thief triumphantly stows the teddy bear in his backpack.
+  </steals>
+
+This last situation describing the thief gloating over his
+accomplishment is not really an C<answer> to "p1", but there is
+certainly some kind of direct contextual connection.  The C<context>
+attribute is available for such cases.  C<context> is a catch-all.  It
+is appropriate for any kind of generic relationship for which a more
+specific classification is not available.
+
+=head2 Resolution
+
+The library tries to keep track of situations which remain unresolved
+(or pending).  For example:
+
+  <accepts id="order1" initiator="clerk" left="Joey" before="focused">
+    What toppings do you want on your pizza?
+  </accepts>
+
+  <impasse answer="order1" left="Joey" right="cleck" tension="stifled">
+    Joey puts the phone on hold.
+  </impasse>
+
+In general, stories don't stop abruptly leaving such cliffhangers
+unresolved.
+
+=cut
 
 Another variation arises when people make silly comments about a
 person who isn't present to hear them.
@@ -178,3 +275,4 @@ person who isn't present to hear them.
       </exposes>
     </accepts>
   </talk>
+

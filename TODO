@@ -6,3 +6,15 @@ convert left/right -> L/R
 
 impasse id=a1
 impasse echo=a1 absent=right
+
+merge prepare_* into a single command-line tool; move code into libraries
+
+---
+
+rename "Dialog" to "Question and Answer"
+
+   break the pattern
+
+   even so, "answer" is the name of the attribute
+
+   constraints -> seems to fit colloquial usage

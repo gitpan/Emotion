@@ -1,6 +1,7 @@
 COPYING
 MANIFEST
 MANIFEST.SKIP
+Makefile.PL
 README
 TODO
 lib/Emotion.pm
@@ -8,3 +9,4 @@ lib/Emotion.pod
 lib/Emotion/Constants.pm
 pl/prepare_index
 pl/prepare_transcript
+t/01.t
