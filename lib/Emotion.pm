@@ -17,7 +17,7 @@
 
 use strict;
 package Emotion;
-our $VERSION = '0.10';
+our $VERSION = '0.11';
 
 our $Stem;
 our $DialogID;
@@ -84,10 +84,12 @@ sub new {
 	$Link{$id} = $o;
     }
 
-    $expat->xpcroak("reply renamed to answer")
+    $expat->xpcroak("reply renamed to re")
 	if exists $o->{reply};
+    $expat->xpcroak("answer renamed to re")
+	if exists $o->{answer};
 
-    for my $kind (qw(echo revoke amend context answer)) {
+    for my $kind (qw(re echo revoke amend context)) {
 	next if !exists $o->{$kind};
 	my $to = $o->{$kind};
 	$o->{$kind} = $Link{$to};
@@ -195,10 +197,10 @@ sub new {
 	
     if ($type eq 'impasse') {
 	#$expat->xpcroak("impasse to what?")
-	#    if !sum(map { exists $o->{$_} } qw(answer echo amend absent));
-	$expat->xpcroak("choose *one*: answer/echo/amend")
-	    if sum(map { exists $o->{$_} } qw(answer echo amend absent)) != 1;
-	my $re = $o->{answer} || $o->{echo} || $o->{amend};
+	#    if !sum(map { exists $o->{$_} } qw(re echo amend absent));
+	$expat->xpcroak("choose *one*: re/echo/amend/absent")
+	    if sum(map { exists $o->{$_} } qw(re echo amend absent)) != 1;
+	my $re = $o->{re} || $o->{echo} || $o->{amend};
 	if ($re) {
 	    my $aty = $re->{type};
 	    $expat->xpcroak("impasse to `$aty'?")
@@ -226,9 +228,9 @@ sub new {
 	    if ($o->{right} ne $re->{left} and $o->{right} ne $re->{right});
     }
 
-    if (exists $o->{answer}) {
-	my $re = $o->{answer};
-	$expat->xpcroak("can't answer readiness")
+    if (exists $o->{re}) {
+	my $re = $o->{re};
+	$expat->xpcroak("can't re readiness")
 	    if $re->{type} eq 'ready';
 	
 	my $i1 = $re->initiator;
@@ -246,10 +248,10 @@ sub new {
 	    $expat->xpcroak("$i1 kept the initiative")
 	}
 
-	$expat->xpcarp($re->initiator." not in answer")
+	$expat->xpcarp($re->initiator." not in re")
 	    if $re->initiator ne $o->victim;
 	my $v = $re->victim;
-	$expat->xpcarp("$v not in answer")
+	$expat->xpcarp("$v not in re")
 	    if $v ne '*' && $v ne $o->initiator;
     }
 
@@ -264,8 +266,8 @@ sub new {
     if (exists $o->{revoke}) {
 	my $oops = $o->{revoke};
 	my @open;
-	push @open, $oops->{answer} if
-	    exists $oops->{answer};
+	push @open, $oops->{re} if
+	    exists $oops->{re};
 	for my $z (@open) {
 	    $Open{ $z->label } = $z;
 	}
@@ -282,12 +284,12 @@ sub new {
 	    $expat->xpcarp("amend $label");
 	}
     }
-    if (exists $o->{answer}) {
-	my $label = $o->{answer}->label;
+    if (exists $o->{re}) {
+	my $label = $o->{re}->label;
 	if (delete $Open{ $label }) {
 	    # OK
 	} else {
-	    my $an = $o->{answer};
+	    my $an = $o->{re};
 	    if ($an->{type} eq 'admires' and $an->{before}) {
 		# OK
 	    } else {
@@ -381,8 +383,8 @@ sub hash {
     my @k;
 
     push @k, $TypeCode{ $o->{type} };
-    if (exists $o->{answer}) {
-	my $an = $o->{answer};
+    if (exists $o->{re}) {
+	my $an = $o->{re};
 	push @k, 'a='.$TypeCode{ $an->{type} };
 	push @k, _accent($an);
     }
@@ -399,11 +401,11 @@ sub hash {
 sub emotion {
     my ($o) = @_;
     my $ty = $o->{type};
-    my $answer;
+    my $re;
     my $aty = '';
-    if (exists $o->{answer}) {
-	$answer = $o->{answer};
-	$aty = $answer->{type};
+    if (exists $o->{re}) {
+	$re = $o->{re};
+	$aty = $re->{type};
     }
     my $context;  # try to avoid for classification purposes
     my $cty = '';
@@ -447,7 +449,7 @@ sub emotion {
 		} else {
 		    'embarrassment / denial';
 		}
-	    } elsif ($aty eq 'accepts' and exists $answer->{before}) {
+	    } elsif ($aty eq 'accepts' and exists $re->{before}) {
 		my $te = $o->{tension};
 		if ($te eq 'focused') {
 		    '?';
@@ -487,7 +489,7 @@ sub emotion {
 		} elsif ($te eq 'stifled') {
 		    'angry with his/her self';
 		} else { '?' }
-	    } elsif ($aty eq 'accepts' and exists $answer->{before}) {
+	    } elsif ($aty eq 'accepts' and exists $re->{before}) {
 		if ($te eq 'focused') {
 		    'accusal';
 		} elsif ($te eq 'stifled') {
@@ -550,11 +552,11 @@ sub emotion {
 		} else {
 		    if (!$aty) {
 			'?'
-		    } elsif ($aty eq 'accepts' and exists $answer->{before} and
-			$answer->{before} eq 'focused') {
+		    } elsif ($aty eq 'accepts' and exists $re->{before} and
+			$re->{before} eq 'focused') {
 			'dubious about a candid assertion';
 		    } elsif ($aty eq 'observes' and
-			     $answer->{intensity} eq 'gentle') {
+			     $re->{intensity} eq 'gentle') {
 			'dubious about a brush-off reply';
 		    } else {
 			'dubious';
@@ -568,7 +570,7 @@ sub emotion {
 		my $te = $o->{before};
 		if ($te eq 'focused') {
 		    if ($aty eq 'impasse' and 
-			$answer->{tension} eq 'relaxed') {
+			$re->{tension} eq 'relaxed') {
 			'guess the riddle';
 		    } else {
 			'confidence';
@@ -640,16 +642,16 @@ sub emotion {
 	    } else {
 		'sleepless agony';
 	    }
-	} elsif ($aty eq 'accepts' and exists $answer->{before} and
-		 $answer->{before} eq 'focused' and
-		 $answer->{initiator} eq 'right') {
+	} elsif ($aty eq 'accepts' and exists $re->{before} and
+		 $re->{before} eq 'focused' and
+		 $re->{initiator} eq 'right') {
 	    my $in = $o->{intensity};
 	    if ($in eq 'gentle') {
 		'caught red-handed';
 	    } else { '?' }
-	} elsif ($aty eq 'accepts' and exists $answer->{before} and
-		 $answer->{before} eq 'focused' and
-		 $answer->{initiator} eq 'left') {
+	} elsif ($aty eq 'accepts' and exists $re->{before} and
+		 $re->{before} eq 'focused' and
+		 $re->{initiator} eq 'left') {
 	    my $in = $o->{intensity};
 	    if ($in eq 'gentle') {
 		'suspicious';
@@ -677,7 +679,7 @@ sub emotion {
 	    } else {
 		'blasts her with silent force'
 	    }
-	} elsif ($aty eq 'exposes' and ($answer->{before}||'?') eq 'focused') {
+	} elsif ($aty eq 'exposes' and ($re->{before}||'?') eq 'focused') {
 	    if ($in eq 'gentle') {
 		'threaten';
 	    } elsif ($in eq 'forceful') {
@@ -685,11 +687,11 @@ sub emotion {
 	    } else {
 		'?';
 	    }
-	} elsif ($aty eq 'impasse' and $answer->{tension} eq 'focused') {
+	} elsif ($aty eq 'impasse' and $re->{tension} eq 'focused') {
 	    if ($in eq 'gentle') {
 		'amused by impasse';
 	    } else { '?' }
-	} elsif ($aty eq 'impasse' and $answer->{tension} eq 'relaxed') {
+	} elsif ($aty eq 'impasse' and $re->{tension} eq 'relaxed') {
 	    if ($in eq 'gentle') {
 		'amused by counteroffer';
 	    } else { '?' }

@@ -22,7 +22,7 @@ use Carp;
 use XML::Parser;
 use Emotion;
 
-our $VERSION = '2000.11.19';
+our $VERSION = '2000.11.20';
 our %opt = (context => 0);
 
 use constant ABSENT_COLOR => '#c0a0a0';
@@ -128,7 +128,7 @@ our $cregex = do {
 
 {
     my $opt_context = 1;  # convert to %opt ?
-    my $opt_answer = 1;
+    my $opt_re = 1;
     my $out;
     my @Situation;
     my @Stack;
@@ -148,7 +148,7 @@ our $cregex = do {
 	    characters($out, "$o->{phrase_id}. ");
 	    
 	    if (($opt_context and exists $o->{context}) or
-		($opt_answer and exists $o->{answer}) or
+		($opt_re and exists $o->{re}) or
 		exists $o->{echo} or
 		exists $o->{amend})
 	    {
@@ -156,7 +156,7 @@ our $cregex = do {
 		my $space;
 		my @todo;
 		push @todo, 'context' if $opt_context;
-		push @todo, 'answer' if $opt_answer;
+		push @todo, 're' if $opt_re;
 		push @todo, 'echo', 'amend';
 		for my $ref (@todo) {
 		    next if !exists $o->{$ref};
@@ -603,9 +603,9 @@ Situations without a clear-cut initiator are listed in both tables.");
 	    characters($out, ' : ');
 	    show_atom($out, $i);
 
-	    if (exists $i->{answer}) {
-		dataElement($out, 'I', ' answering ');
-		show_atom($out, $i->{answer});
+	    if (exists $i->{re}) {
+		dataElement($out, 'I', ' reacting to ');
+		show_atom($out, $i->{re});
 	    } elsif (exists $i->{echo}) {
 		dataElement($out, 'I', ' echoing ');
 		show_atom($out, $i->{echo});

@@ -30,7 +30,7 @@ __DATA__
     What toppings do you want on your pizza?
   </accepts>
 
-  <impasse answer="order1" left="Joey" right="clerk" tension="stifled">
+  <impasse re="order1" left="Joey" right="clerk" tension="stifled">
     Joey puts the phone on hold.
   </impasse>
 

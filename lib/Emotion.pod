@@ -15,10 +15,12 @@ place.  If you haven't studied http://ghost-wheel.net then go do that
 now.
 
 The first part of this document describes the XML representation of
-3rd person annotations and validation rules.  The second part
+3rd person annotations and the validation rules.  The second part
 describes the perl API.
 
 =head1 XML TUTORIAL
+
+=head2 The Basics
 
 The minimum situation consists of the type of competition and two
 opponents.
@@ -185,79 +187,120 @@ We covered most of the simple variations.  Here is a summary:
 The square brackets denote optional attributes.  More will be said
 about this later.
 
-=head2 Question and Answer
+=head2 Reaction
 
-Given that a child is holding a teddy by with brown fur, please
-consider a sample dialog:
+Question & answer (Q&A) format is a common way to structure
+discussion.  This section looks at the Q&A structure in comparison
+with the competition model.  It will be shown that there are some
+conflicts in the corresponce, however, the complementary features can
+be embraced.
 
-  (adult) Does your teddy bear have brown fur?
-  (child) Yes.
+Questions usually end with a question mark.  Even so, from the point
+of view of competition, questions are essentially demands.  For
+example:
 
-How can the quality of a question and answer pair be modelled with the
-competition framework?
-
-  <accepts right="child" initiator="adult" before="focused">
+  <accepts left="child" initiator="parent" before="focused">
     Does your teddy bear have brown fur?
   </accepts>
 
-  <accepts left="parent" initiator="child" before="focused">
-    Yes.
+In answer, the child's choices include:
+
+  <accepts initiator="child" right="parent" before="focused">
+    Yes!
   </accepts>
 
-Here the "question" is more like a demand that the child acknowledge
-understanding the statement, "teddy bear has brown fur."  And the
-child could easily responded differently.  For example:
+Or:
 
-  <accepts right="child" initiator="adult" before="focused">
+  <impasse initiator="child" right="parent" tension="relaxed">
+    Which teddy bear?
+  </accepts>
+
+Notice that similar replies could be expected from the non-question
+demand, "I want the teddy bear."  For example, C<accepts> ("OK, here
+it is.") or C<impasse> ("Which teddy bear?").  While the question mark
+accents the demand somehow, its presence or absence does not seem
+particularly significant in the context of competition.
+
+The answer side of Q&A will now be considered.  Answers are generally
+offered in reaction to questions.  However, it is easy to demonstrate
+ambiguity.  For example:
+
+  <accepts left="child" initiator="parent" before="focused">
     Does your teddy bear have brown fur?
   </accepts>
 
-  <observes initiator="child" right="parent" intensity="forceful">
-    (silence)
-  </observes>
+  <impasse initiator="child" right="parent" tension="relaxed">
+    Which teddy bear?
+  </accepts>
 
-In this case, the child (in effect) declined to accept the adult's
-question.  Notice that there is no indication of the question-answer
-connection between these two scenarios.
+Is the child's reply a question or an answer?  Perhaps both, but
+clearly the Q&A terminology is imprecise.  Despite these problems,
+some kind of contextual relationship definitely exists.  To encode the
+Q&A relationship precisely, a clear standard is needed to recognize
+it.
 
-To encode a question-answer relationship, we need some standard to
-recognize them.  Our constraint is that the participants must be
-unchanging but the initiator must flip-flop.  These rules were found
-by surveying many question-answer exchanges and the rules seem to work
-well in practice.  The C<id> and C<answer> attributes encode this
-information as follows:
+The standard suggested here is that the participants must match but
+the initiator must flip-flop.  These rules were discovered by
+surveying many Q&A style exchanges and the rules seem to work well in
+practice.  C<re> (meaning "in response to") and C<id> attributes serve
+the purpose.  For example:
 
   <accepts id="q1" right="child" initiator="adult" before="focused">
     Does your teddy bear have brown fur?
   </accepts>
 
-  <accepts answer="q1" left="parent" initiator="child" before="focused">
-    Yes.
+  <accepts re="q1" left="parent" initiator="child" before="focused">
+    Yes!
   </accepts>
 
-=head2 Context
+=head2 Quality
 
-Here is a prior example updated with new markup:
+So far, the chosen markup may seem somewhat arbitrary.  For example,
+why indicate merely C<accepts>?
 
-  <steals id="p1" initiator="thief" right="child" before="focused">
-    The thief eyes the teddy bear maliciously and wrenches it
-    from the child's passionate grip.
+  <accepts id="q1" right="child" initiator="adult" before="focused">
+    Does your teddy bear have brown fur?
+  </accepts>
+
+Why not more detail, such as:
+
+  <accepts id="q1" right="child" initiator="adult" before="focused">
+    Does your
+      <admires initiator="child" right="teddy bear" tension="relaxed">
+        teddy bear
+      </admires>
+    have brown fur?
+  </accepts>
+
+In fact, either annotation could be accurate.  The problem is that
+written text is not rich enough as a medium to thoroughly convey a
+situation's emotional textual unless we resort to cumbersome
+contortions (such as XML :-).  On the other hand, film (or the actual
+life experience itself) is quite sufficiently expressive.  Still,
+there may be a question as to what constitutes *quality* markup.  For
+example:
+
+  <steals initiator="Yupi" right="Lon" before="focused">
+    Yupi gives Lon a beautiful and fragrant flower.
   </steals>
 
-  <steals answer="p1" left="thief" initiator="child" tension="focused">
-    The child becomes furious and starts crying.
-  </steals>
+Most likely this markup is wrong.  A proposed criteria for judging the
+quality of markup follows:
 
-  <steals context="p1" initiator="thief" right="child" after="focused">
-    The thief triumphantly stows the teddy bear in his backpack.
-  </steals>
+=over 4
 
-This last situation describing the thief gloating over his
-accomplishment is not really an C<answer> to "p1", but there is
-certainly some kind of direct contextual connection.  The C<context>
-attribute is available for such cases.  C<context> is a catch-all.  It
-is appropriate for any kind of generic relationship for which a more
-specific classification is not available.
+=item * Is it detailed enough to isolate single emotions?
+
+Looking at a scene as a sequences of moments, every moment can be
+consider an *independent* competition event.  The question is: into
+how many intervals must we divide the timeline such that each interval
+is exactly one emotion?
+
+=item * Does it span the entire duration of the emotion?
+
+This duration criteria is consided in the next section, "Resolution."
+
+=back
 
 =head2 Resolution
 
@@ -268,7 +311,7 @@ The parser tries to keep track of situations which remain unresolved
     What toppings do you want on your pizza?
   </accepts>
 
-  <impasse id="o2" answer="o1" left="Joey" right="cleck" tension="stifled">
+  <impasse id="o2" re="o1" left="Joey" right="cleck" tension="stifled">
     Joey puts the phone on hold.
   </impasse>
 
@@ -279,8 +322,8 @@ which do not find closure.  For example, until Joey picks up the phone
 or the clerk gives up in disgust, the pizza situation will be flagged
 as unresolved.
 
-Another way to manage resolution is to declare that the victim is
-absent.  Here is an example:
+Another way to manage resolution is to declare the victim absent.
+Here is an example:
 
   <talk who="teacher">
     <accepts left="students" before="focused" absent="left">
@@ -299,6 +342,38 @@ truly C<accepts>, C<observes>, or even merely:
 Notice that the C<absent> attribute is unnecessary in this case.  A
 variety of situations do not trigger any need for resolution, and
 C<ready> is one of them.
+
+=head2 Wildcards
+
+  <accepts left="*" initiator="Crawford" before="focused">
+    Does anyone know the time?
+  </accepts>
+
+(Talking about anthropomorphic rivals.)
+
+=head2 Context
+
+Here is a prior example updated with new markup:
+
+  <steals id="p1" initiator="thief" right="child" before="focused">
+    The thief eyes the teddy bear maliciously and wrenches it
+    from the child's passionate grip.
+  </steals>
+
+  <steals re="p1" left="thief" initiator="child" tension="focused">
+    The child becomes furious and starts crying.
+  </steals>
+
+  <steals context="p1" initiator="thief" right="child" after="focused">
+    The thief triumphantly stows the teddy bear in his backpack.
+  </steals>
+
+This last situation describing the thief gloating over his
+accomplishment is not really an C<answer> to "p1", but there is
+certainly some kind of direct contextual connection.  The C<context>
+attribute is available for such cases.  C<context> is a catch-all.  It
+is appropriate for any kind of generic relationship for which a more
+specific classification is not available.
 
 =head1 EMOTION LIBRARY API
 
