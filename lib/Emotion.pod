@@ -10,9 +10,10 @@ in perl for further processing.
 
 =head1 DESCRIPTION
 
-Most of the complexity of this module is learning how to annotate
-free-form text with information about what competition is taking
-place.  The API is simple.
+Most of the complexity of this module resides in learning how to
+annotate free-form text with information about what competition is
+taking place.  If you haven't studied http://ghost-wheel.net then go
+do that first.
 
 =over 4
 
@@ -23,10 +24,6 @@ place.  The API is simple.
 =item * my @pending = Emotion::unresolved()
 
 =back
-
-The code assumes that you are using the expat based XML::Parser.  It
-would not be difficult to make the code generic enough to interface
-with any XML parser.
 
 =head2 Emotion::Atom Methods
 
@@ -66,8 +63,8 @@ which side of the situation he or she participates.  For example:
     The teacher watches a student make a presentation.
   </observes>
 
-Of course a teacher is probably more relaxed lecturing in front of a
-class than a student.  This information can be captured with the
+Of course a teacher is probably more accustomed to lecturing in front
+of a class than a student.  This information can be captured with the
 C<intensity> attribute:
 
   <observes left="student" right="teacher" intensity="gentle">
@@ -142,8 +139,7 @@ successful:
   </steals>
 
   <impasse left="child" right="thief" tension="focused">
-    The child notices suspicious behavior and grips the teddy
-    bear even more tightly.
+    The child grips the teddy bear even more tightly.
   </impasse>
 
 The four situations involving spin (C<steals>, C<exposes>, C<admires>,
@@ -208,7 +204,8 @@ about this later.
 
 =head2 Question and Answer
 
-Please consider a sample dialog:
+Given that a child is holding a teddy by with brown fur, please
+consider a sample dialog:
 
   (adult) Does your teddy bear have brown fur?
   (child) Yes.
@@ -238,9 +235,9 @@ child could easily responded differently.  For example:
 
 In this case, the child (in effect) declined to accept the adult's
 question.  Notice that there is no indication of the question-answer
-relationship between the two scenarios.
+connection between these two scenarios.
 
-To encode question-answer relationship, we need some standard to
+To encode a question-answer relationship, we need some standard to
 recognize them.  Our constraint is that the participants must be
 unchanging but the initiator must flip-flop.  These rules were found
 by surveying many question-answer exchanges and the rules seem to work
@@ -284,27 +281,43 @@ specific classification is not available.
 The library tries to keep track of situations which remain unresolved
 (or pending).  For example:
 
-  <accepts id="order1" initiator="clerk" left="Joey" before="focused">
+  <accepts id="o1" initiator="clerk" left="Joey" before="focused">
     What toppings do you want on your pizza?
   </accepts>
 
-  <impasse answer="order1" left="Joey" right="cleck" tension="stifled">
+  <impasse id="o2" answer="o1" left="Joey" right="cleck" tension="stifled">
     Joey puts the phone on hold.
   </impasse>
 
-In general, stories don't stop abruptly leaving such cliffhangers
-unresolved.
+In general, stories don't stop abruptly leaving unresolved
+cliffhangers.  Here is a clue that can be used to debug annotations.
+After processing a transcript, C<empathize> outputs all the situations
+which do not find closure.  For example, until Joey picks up the phone
+or the clerk gives up in disgust, the pizza situation will be flagged
+as unresolved.
 
-=cut
+Another way to manage resolution is to declare that one side of the
+situation is absent.  Here is an example:
 
-Another variation arises when people make silly comments about a
-person who isn't present to hear them.
-
-  <talk who="gossip1">
-    <accepts left="gossip2" before="focused">
-      <exposes right="June" before="focused" absent="right">
-        June's hair looks terrible!
-      </exposes>
+  <talk who="teacher">
+    <accepts left="students" before="focused" absent="left">
+      The students listen to the teacher's tedious monologue.
     </accepts>
   </talk>
 
+In fact, the teacher may never know whether the situation was
+really C<accepts>, C<observes>, or even merely:
+
+  <ready intensity="gentle" left="students" right="teacher">
+    The students are intermittently aware that the
+    teacher continues to talk.
+  </ready>
+
+Notice that the C<absent> attribute is unnecessary in this case.  A
+variety of situations do not trigger the need for resolution, and
+C<ready> is one of them.
+
+=cut
+
+C<absent> is not avaiable to the initiator, and is not permitted for
+C<ready>, C<observes>, C<uneasy>, C<impasse>, or C<destroys>.
