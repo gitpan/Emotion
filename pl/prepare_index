@@ -1,0 +1,331 @@
+#!/usr/local/bin/perl -w
+#
+# Copyright (C) 2000 Free Software Foundation
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# --------------------
+# TODO:
+#
+# THREEPIO sometimes act as a proxy -- encode this somehow?
+
+use strict;
+use Carp;
+use XML::Writer;
+use XML::Parser;
+use Emotion;
+
+our $VERSION = '2000.11.13';
+
+while (@ARGV and $ARGV[0] =~ m/^-/) {
+    my $opt = shift @ARGV;
+    if ($opt eq '-v') {
+	print "$0 v$VERSION
+";
+    } else {
+       warn "ignoring `$opt'";
+    }
+}
+
+sub usage {
+    print "usage: prepare_index [-v] <script> [<script> ...]\n";
+    exit;
+}
+
+my $cregex = do {
+    my $tmp = ('^('.
+	       join('|', qw(destroys steals uneasy exposes impasse
+			    admires observes accepts ready)).
+	       ')$');
+    qr/$tmp/;
+};
+
+our $Title;
+our %Emotion;
+our %Character;
+our %Pair;
+
+{
+our $SaveCData=0;
+our $CData;
+
+sub set_save_text {
+    my ($yes) = @_;
+    if ($yes == $SaveCData) {
+	carp "set_save_text already = $yes";
+	return;
+    }
+    $SaveCData = $yes;
+    $CData = '' if $yes;
+    $CData;
+}
+
+sub text {
+    my ($expat, $str) = @_;
+    if ($SaveCData) {
+	$CData .= $str;
+    }
+}
+}
+
+sub start {
+    my ($expat, $elem, %attr) = @_;
+    if ($elem eq 'title') {
+	set_save_text(1);
+    } elsif ($elem eq 'script') {
+	# ok
+    } elsif ($elem eq 'scene') {
+    } elsif ($elem eq 'talk') {
+        Emotion::set_speaker($attr{who});
+    } elsif ($elem =~ /$cregex/) {
+	$attr{type} = $elem;
+	my $o = Emotion::Atom->new($expat, \%attr);
+	push @{ $Emotion{ $o->hash } }, $o;
+	++$Character{$o->{left}};
+	++$Character{$o->{right}};
+	push @{ $Pair{ join(':', sort $o->{left}, $o->{right}) } }, $o;
+    } else {
+	warn "tag `$elem' ignored";
+    }
+}
+
+sub end {
+    my ($expat, $elem) = @_;
+    if ($elem eq 'title') {
+	$Title = set_save_text(0);
+    }
+}
+
+sub show_atom {
+    my ($out, $i) = @_;
+
+    my $type = $i->{type};
+    for my $phase (qw(before after intensity tension)) {
+	next if !exists $i->{$phase};
+	$out->characters("$phase=$i->{$phase}");
+	last;
+    }
+    
+    $out->characters(' ');
+    
+    if ($type eq 'ready') {
+	$out->characters("[0] and [0] are at readiness");
+    } elsif ($type eq 'observes') {
+	$out->characters("[0] observes [-]");
+    } elsif ($type eq 'uneasy') {
+	$out->characters("[-] is made uneasy by [0]");
+    } elsif ($type eq 'destroys') {
+	$out->dataElement('b', "[-]");
+	$out->characters(" destroys [-]");
+    } elsif ($type eq 'impasse') {
+	$out->dataElement('b', "[+]");
+	$out->characters(" and [+] are at an impasse");
+    } else {
+	my $init = $i->{initiative};
+	my $pretty = $type;
+	$pretty = "steals from"
+	    if $pretty eq 'steals';
+	my ($left,$right);
+	if ($type eq 'steals') { $left='-'; $right='+'; }
+	elsif ($type eq 'exposes') { $left='+'; $right='-'; }
+	elsif ($type eq 'accepts') { $left='0'; $right='+'; }
+	elsif ($type eq 'admires') { $left='+'; $right='0'; }
+	else { die $type }
+
+	if ($init eq 'left') {
+	    $out->dataElement('b', "[$left]");
+	    $out->characters(" $pretty [$right]");
+	} else {
+	    $out->characters("[$left] $pretty ");
+	    $out->dataElement('b', "[$right]");
+	}
+    }
+}
+    
+sub pair_index {
+    my ($stem) = @_;
+    $stem =~ s/\.xml$//;
+    open my $fh, ">${stem}-pair.html";
+    my $out = XML::Writer->new(OUTPUT => $fh, NEWLINES => 1);
+    $out->doctype("HTML", "-//W3C//DTD HTML 4.0 Transitional//EN", '');
+    $out->startTag('HTML');
+    $out->startTag('HEAD');
+    $out->dataElement('TITLE', "$Title Character Index");
+    $out->endTag('HEAD');
+    $out->startTag('BODY', bgcolor=>"#FFFFFF", text=>"#000000");
+
+    $out->startTag('P');
+    for my $who (sort keys %Character) {
+	$out->dataElement('A', $who, HREF => "#$who");
+	$out->characters(' ');
+    }
+    $out->endTag;
+
+    my @C = sort { $Character{$b} <=> $Character{$a} } keys %Character;
+    for my $who (@C) {
+	$out->dataElement('A', $who, NAME => $who);
+	$out->characters(" vs");
+	for my $mix (@C) {
+	    my $k = join(':', sort $who, $mix);
+	    next if !exists $Pair{$k};
+	    $out->characters(' ');
+	    $out->dataElement('A', $mix, HREF => '#'.join(':', $who, $mix));
+	}
+	$out->emptyTag('BR');
+    }
+
+    for my $pair (sort keys %Pair) {
+	my $l = $Pair{$pair};
+	my $z = $l->[0];
+	my @pair = sort $z->{left}, $z->{right};
+	$out->startTag('P');
+	for (my $rev=0; $rev <= 1; $rev++) {
+	    if ($rev) {
+		@pair = reverse @pair;
+		$out->emptyTag('BR');
+	    }
+	    $out->dataElement('A', join(' <---> ', @pair),
+			      NAME => join(':', @pair));
+	    $out->startTag('TABLE', BORDER => 1);
+	    my @todo = qw(destroys exposes observes
+			  steals impasse accepts
+			  uneasy admires ready);
+	    for (my $y=0; $y < 3; $y++) {
+		$out->startTag('TR');
+		for (my $x=0; $x < 3; $x++) {
+		    $out->startTag('TD', VALIGN => 'TOP');
+		    my $type = shift @todo;
+		    $out->characters("$type:");
+		    for my $i (@$l) {
+			next if $i->{type} ne $type;
+			my $init = $i->initiator;
+			next if $init && $init ne $pair[0];
+			$out->characters(' ');
+			$out->dataElement('A', "$i->{stem}$i->{dialog_id}.$i->{phrase_id}",
+					  HREF => "$i->{stem}.html#l$i->{dialog_id}",
+					  TARGET => "$i->{stem}");
+		    }
+		    $out->endTag('TD');
+		}
+		$out->endTag('TR');
+	    }
+	    $out->endTag('TABLE');
+	}
+	$out->endTag('P');
+    }
+
+    $out->dataElement('HR', '');
+    $out->dataElement('P', "$0 v$VERSION ".localtime());
+
+    $out->endTag('BODY');
+    $out->endTag('HTML');
+    $out->end;
+}
+
+sub emotion_index {
+    open my $fh, ">empathy.html";
+    my $out = XML::Writer->new(OUTPUT => $fh, NEWLINES => 1);
+    $out->doctype("HTML", "-//W3C//DTD HTML 4.0 Transitional//EN", '');
+    $out->startTag('HTML');
+    $out->startTag('HEAD');
+    $out->dataElement('TITLE', "Empathy Index");
+    $out->endTag('HEAD');
+    $out->startTag('BODY', bgcolor=>"#FFFFFF", text=>"#000000");
+
+    {
+	my $col=0;
+	$out->startTag('P');
+	$out->startTag('TABLE', 'BORDER' => 1);
+	$out->startTag('TR');
+	my %map;
+	for my $key (keys %Emotion) {
+	    push @{ $map{ $Emotion{$key}[0]->emotion } }, $key;
+	}
+	for my $emotion (sort keys %map) {
+	    $out->startTag('TD');
+	    $out->characters($emotion);
+	    my @variety = @{ $map{$emotion} };
+	    my $x=0;
+	    for my $type (sort @variety) {
+		$out->characters(' ');
+		$out->dataElement('A', ++$x, HREF => '#'.$type);
+	    }
+	    $out->endTag;
+
+	    $col = ($col+1) % 5;
+	    if ($col == 0) {
+		$out->endTag('TR');
+		$out->startTag('TR');
+	    }
+	}
+	$out->endTag('TR');
+	$out->endTag;
+	$out->endTag('P');
+    }
+
+    $out->emptyTag('HR');
+
+    my $type='';
+    for my $key (sort keys %Emotion) {
+	my $list = $Emotion{$key};
+	my $i = $list->[0];
+
+	if ($type ne $i->{type}) {
+	    $type = $i->{type};
+	    $out->dataElement('B', $type);
+	}
+
+	$out->startTag('P');
+	$out->dataElement('A', $i->emotion, NAME => "$key");
+
+	$out->characters(' : ');
+	show_atom($out, $i);
+
+	if (exists $i->{answer}) {
+	    $out->dataElement('I', ' answering ');
+	    show_atom($out, $i->{answer});
+	}
+	if (exists $i->{context}) {
+	    $out->dataElement('I', ' in the context of ');
+	    show_atom($out, $i->{context});
+	}
+
+	for my $o (@$list) {
+	    $out->characters(' ');
+	    $out->dataElement('A', "$o->{stem}$o->{dialog_id}.$o->{phrase_id}",
+			      HREF => "$o->{stem}.html#l$o->{dialog_id}",
+			      TARGET => "$o->{stem}");
+	}
+
+	$out->endTag('P');
+    }
+
+    $out->dataElement('HR', '');
+    $out->dataElement('P', "$0 v$VERSION ".localtime());
+
+    $out->endTag('BODY');
+    $out->endTag('HTML');
+    $out->end;
+}
+
+for my $script (@ARGV) {
+    Emotion::set_transcript($script);
+    %Pair = ();
+    %Character = ();
+
+    my $p = XML::Parser->new(ErrorContext => 1);
+    $p->setHandlers(Start => \&start, End => \&end, Char => \&text);
+    $p->parsefile($script);
+
+    pair_index($script);
+}
+
+emotion_index();

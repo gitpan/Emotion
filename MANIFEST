@@ -1,0 +1,7 @@
+COPYING
+MANIFEST
+MANIFEST.SKIP
+README
+lib/Emotion.pm
+pl/prepare_index
+pl/prepare_transcript
