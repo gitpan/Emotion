@@ -368,16 +368,16 @@ our $cregex = do {
 	} elsif ($elem eq 'scene') {
 	} elsif ($elem eq 'talk') {
 	    Emotion::set_speaker($attr{who});
-	  } elsif ($elem =~ /$cregex/) {
-	      $attr{type} = $elem;
-	      my $o = Emotion::Atom->new($expat, \%attr);
-	      push @{ $Emotion{ $o->hash } }, $o;
-	      ++$Character{$o->{left}};
-	      ++$Character{$o->{right}};
-	      push @{ $Pair{ join(':', sort $o->{left}, $o->{right}) } }, $o;
-	  } else {
-	      warn "tag `$elem' ignored";
-	  }
+	} elsif ($elem =~ /$cregex/) {
+	    $attr{type} = $elem;
+	    my $o = Emotion::Atom->new($expat, \%attr);
+	    push @{ $Emotion{ $o->hash } }, $o;
+	    ++$Character{$o->{left}};
+	    ++$Character{$o->{right}};
+	    push @{ $Pair{ join(':', sort $o->{left}, $o->{right}) } }, $o;
+	} else {
+	    warn "tag `$elem' ignored";
+	}
     }
 
     sub index_end {

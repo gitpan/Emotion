@@ -17,7 +17,7 @@
 
 use strict;
 package Emotion;
-our $VERSION = '0.12';
+our $VERSION = '0.14';
 
 our $Stem;
 our $DialogID;
@@ -137,8 +137,11 @@ sub new {
     }
 
     if ($type =~ m/^(impasse|destroys)$/) {
-	$expat->xpcroak("$type initiator is always left")
-	    if exists $o->{initiator};
+	if (exists $o->{initiator}) {
+	    $expat->xpcroak("$type initiator is always left")
+		if exists $o->{left} || $o->{initiator} eq 'left';
+	    $o->{left} = $o->{initiator};
+	}
 	$o->{initiator} = 'left';
     } elsif (exists $o->{initiator}) {
 	my $i = $o->{initiator};
@@ -212,20 +215,12 @@ sub new {
 	# are the constraints are wrong?
 	# initiator doesn't matter but victim should match?
 
-	$expat->xpcarp("echo without absent")  # echo implies absent
-	    unless exists $o->{absent};
-
 	my $re = $o->{echo};
 
-	my $i1 = $re->initiator;
-	my $i2 = $o->initiator;
-	$expat->xpcroak("echo but initiator switched `$i1'->`$i2'?")
-	    if $i1 ne $i2;
-	
-	$expat->xpcarp("$o->{left} not in echo")
-	    if ($o->{left} ne $re->{left} and $o->{left} ne $re->{right});
-	$expat->xpcarp("$o->{right} not in echo")
-	    if ($o->{right} ne $re->{left} and $o->{right} ne $re->{right});
+	my $v1 = $re->victim;
+	my $v2 = $o->victim;
+	$expat->xpcroak("echo victim `$v1' changed to `$v2'?")
+	    if $v1 ne $v2;
     }
 
     if (exists $o->{re}) {
@@ -240,9 +235,12 @@ sub new {
 	    $expat->xpcarp("who has initiator?");
 	} elsif (defined($i1) xor defined($i2)) {
 	    if ($i1) {
-		$o->{initiator} = $i1 eq 'left'? 'right':'left';
+		$o->{initiator} = $i1 eq $o->{left}? 'right':'left';
+		# why always left? XXX
+		# warn $o->label." to $o->{initiator} due to ".$re->label;
 	    } else {
-		$re->{initiator} = $i2 eq 'left'? 'right':'left';
+		die $re->label." due to ".$o->label;
+		$re->{initiator} = $i2 eq $re->{left}? 'right':'left';
 	    }
 	} elsif ($i1 eq $i2) {
 	    $expat->xpcroak("$i1 kept the initiative")
@@ -257,12 +255,27 @@ sub new {
 	    if $v2 ne '*' && $i1 ne $v2;
 	$expat->xpcarp("`$i2' (not `$v1') in re")
 	    if $v1 ne '*' && $v1 ne $i2;
+	$expat->xpcarp("$i1 is the sole initiator; you want amend?")
+	    if $i1 eq $i2;
     }
 
     if (exists $o->{amend}) {
 	my $am = $o->{amend};
-	$expat->xpcroak($am->initiator." ne ".$o->initiator)
-	    if $am->initiator ne $o->initiator;
+	my $i1 = $am->initiator;
+	my $i2 = $o->initiator;
+
+	if (!$i1 and !$i2) {
+	    $expat->xpcroak("who is initiator?");
+	} elsif (defined($i1) xor defined($i2)) {
+	    if ($i1) {
+		$o->{initiator} = $i1 eq $o->{left}? 'left':'right';
+	    } else {
+		$am->{initiator} = $i2 eq $am->{left}? 'left':'right';
+	    }
+	} elsif ($i1 ne $i2) {
+	    $expat->xpcroak("$i1 didn't keep the initiative")
+	}
+
 	$expat->xpcroak($am->victim." ne ".$o->victim)
 	    if $am->victim ne $o->victim;
     }
@@ -285,7 +298,15 @@ sub new {
 	if (delete $Open{ $label }) {
 	    # OK
 	} else {
-	    $expat->xpcarp("amend $label");
+	    $expat->xpcarp("amend revoke=$label");
+	}
+    }
+    if (exists $o->{echo}) {
+	my $label = $o->{echo}->label;
+	if (delete $Open{ $label }) {
+	    # OK
+	} else {
+	    $expat->xpcarp("amend echo=$label");
 	}
     }
     if (exists $o->{re}) {
@@ -306,18 +327,14 @@ sub new {
 	}
     }
 
-    # should compress this somewhat XXX
     if (exists $o->{absent}) {
 	# OK
     } elsif ($type =~ m/^(observes|uneasy|ready)$/) {
 	# OK
-    } elsif ($type eq 'accepts' and exists $o->{tension}) {
-	# OK
-    } elsif ($type eq 'steals' and exists $o->{tension}) {
+    } elsif ($type =~ m/(accepts|steals|admires|exposes)$/ and
+	     (exists $o->{tension} or exists $o->{after})) {
 	# OK
     } elsif ($type eq 'admires' and exists $o->{before}) {
-	# OK
-    } elsif ($type eq 'accepts' and exists $o->{after}) {
 	# OK
     } else {
 	$Open{ $o->label } = $o;
@@ -527,7 +544,7 @@ sub emotion {
 		} elsif ($te eq 'relaxed') {
 		    'humble confidence';
 		} else {
-		    'seek the means to radiate purity unconditionally'
+		    'humbled';
 		}
 	    } else {
 		my $te = $o->{after};
@@ -539,7 +556,7 @@ sub emotion {
 	    my $te = $o->{tension};
 	    if (!$aty or $aty eq 'admires') {
 		if ($te eq 'focused') {
-		    'offer service';
+		    'awe / offer service';
 		} elsif ($te eq 'relaxed') {
 		    'made whole';
 		} else {
@@ -630,7 +647,7 @@ sub emotion {
 		    if ($te eq 'focused') {
 			'convert to admiration';
 		    } elsif ($te eq 'relaxed') {
-			'force humility';
+			'humbled';
 		    } else {
 			'convert to uneasy';
 		    }
@@ -714,7 +731,7 @@ sub emotion {
     } elsif ($ty eq 'ready') {
 	my $in = $o->{intensity};
 	if ($in eq 'gentle') {
-	    'emotional turmoil / paralysis';
+	    'paralysis / emotional turmoil';
 	} elsif ($in eq 'forceful') {
 	    'limbo';
 	} else {

@@ -272,13 +272,18 @@ Why not more detail, such as:
     have brown fur?
   </accepts>
 
-In fact, either annotation could be accurate.  The problem is that
-written text is not rich enough as a medium to thoroughly convey a
-situation's emotional textual unless we resort to cumbersome
-contortions (such as XML :-).  On the other hand, film (or the actual
-life experience itself) is quite sufficiently expressive.  Still,
-there may be a question as to what constitutes *quality* markup.  For
-example:
+In fact, either annotation could be accurate.  Part of the problem is
+that both the story and annotation are being written by the same
+person.  This is a conflict of interest because i can adjust the story
+to improve my annotations, and visa-versa.  Recall that the goal here
+is to develop the best quality annotations *without* changing the
+story.
+
+Another problem is that written text is not rich enough as a medium to
+thoroughly convey life's emotional textual.  To contrast, film (or the
+actual life experience itself) is quite sufficiently expressive.  So
+assuming we are watching a film, what consistitutes best quality
+markup?  For example:
 
   <steals initiator="Yupi" right="Lon" before="focused">
     Yupi gives Lon a beautiful and fragrant flower.
