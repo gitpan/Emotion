@@ -17,12 +17,15 @@
 
 use strict;
 package Emotion;
-our $VERSION = '0.15';
+our $VERSION = '0.16';
 
+our $WarnLevel = 2;
 our $Stem;
 our $DialogID;
 our %Link;  # resolve symbolic links
 our %Open;  # by label
+
+my ($warn, $error);
 
 sub set_transcript {
     my ($xml) = @_;
@@ -34,6 +37,22 @@ sub set_transcript {
     %Link = ();
     %Open = ();
     $DialogID=0;
+
+    if ($WarnLevel == 0) {        # silent
+	$error = 'ignore';
+	$warn = 'ignore';
+    } elsif ($WarnLevel == 1) {   # permissive
+	$error = 'xpcarp';
+	$warn = 'xpcarp';
+    } elsif ($WarnLevel == 2) {   # normal
+	$error = 'xpcroak';
+	$warn = 'xpcarp';
+    } elsif ($WarnLevel == 3) {   # pedantic
+	$error = 'xpcroak';
+	$warn = 'xpcroak';
+    } else {
+	die '$WarnLevel='.$WarnLevel;
+    }
 }
 
 our $Speaker;
@@ -58,6 +77,9 @@ our %TypeCode = (destroys => 0,
 		 accepts => 7,
 		 ready => 8);
 
+package XML::Parser::Expat;
+sub ignore {}
+
 package Emotion::Atom;
 use List::Util qw(sum);
 
@@ -73,28 +95,35 @@ sub new {
 
     my $id = $o->{id};
     if ($id) {
-	$expat->xpcroak("Link `$id' doesn't match \\w+")
-	    if ($id !~ m/^\w+$/);
-
-	if (exists $Link{$id}) {
-	    my $try = $id;
-	    ++$try while exists $Link{$try};
-	    $expat->xpcroak("Link collision with `$id' at talk $Link{$id}{dialog_id}, try `$try'");
+	if ($id !~ m/^\w+$/) {
+	    $expat->$error("Link `$id' doesn't match \\w+");
+	} else {
+	    if (exists $Link{$id}) {
+		my $try = $id;
+		++$try while exists $Link{$try};
+		$expat->$error("Link collision with `$id' at talk $Link{$id}{dialog_id}, try `$try'");
+	    } else {
+		$Link{$id} = $o;
+	    }
 	}
-	$Link{$id} = $o;
     }
 
-    $expat->xpcroak("reply renamed to re")
-	if exists $o->{reply};
-    $expat->xpcroak("answer renamed to re")
-	if exists $o->{answer};
+    for (qw(reply answer)) {
+	if (exists $o->{$_}) {
+	    $expat->$error("`$_' renamed to `re'");
+	    $o->{re} = delete $o->{$_};
+	}
+    }
 
     for my $kind (qw(re echo revoke amend context)) {
 	next if !exists $o->{$kind};
 	my $to = $o->{$kind};
 	$o->{$kind} = $Link{$to};
-	$expat->xpcroak("broken $kind link `$to'")
-	    if !$o->{$kind};
+	if (!$o->{$kind}) {
+	    $expat->$error("broken $kind link `$to'");
+	    delete $o->{$kind};
+	    last;
+	}
     }
 
     # tension & intensity
@@ -103,51 +132,59 @@ sub new {
 	my $after = $o->{after};
 	my $tension = $o->{tension};
 	if (exists $o->{intensity}) {
-	    $expat->xpcarp("rename intensity to tension");
+	    $expat->$error("rename intensity to tension");
 	    $tension = $o->{tension} = delete $o->{intensity};
 	}
-	$expat->xpcroak("before or after or intensity?")
-	    if (defined($before) + defined($after) + defined($tension) != 1);
-
+	if (defined($before) + defined($after) + defined($tension) != 1) {
+	    $expat->$error("before or after or intensity?");
+	    delete $o->{$_} for qw(before after);
+	    $o->{tension} = 'relaxed';
+	}
 	my $i = $before || $after || $tension;
-	$expat->xpcroak("$i?")
-		if $i !~ m/^(focused|relaxed|stifled)$/;
+	if ($i !~ m/^(focused|relaxed|stifled)$/) {
+	    $expat->$error("$i?");
+	}
     } elsif ($type eq 'impasse') {
 	my $tension = $o->{tension};
 	if (exists $o->{intensity}) {
-	    $expat->xpcarp("rename intensity to tension");
+	    $expat->$error("rename intensity to tension");
 	    $tension = $o->{tension} = delete $o->{intensity};
 	}
-	$expat->xpcroak("tension=focused|relaxed|stifled?")
+	$expat->$error("tension=focused|relaxed|stifled?")
 	    if !$tension;
     } elsif ($type =~ m/^(uneasy|observes|ready)$/) {
 	my $i = $o->{intensity};
-	$expat->xpcroak("intensity=$i? (gentle|forceful|extreme)")
+	$expat->$error("intensity=$i? (gentle|forceful|extreme)")
 	    if !$i || $i !~ m/^(gentle|forceful|extreme)$/;
     } else { #destroys
-	$expat->xpcroak("no intensity needed")
-	    if exists $o->{intensity};
-	$expat->xpcroak("no tension needed")
-	    if exists $o->{tension};
+	for (qw(intensity tension)) {
+	    if (exists $o->{$_}) {
+		$expat->$warn("no `$_' needed");
+	    }
+	}
     }
 	
     if (exists $o->{initiative}) {
-	$expat->xpcarp("initiative renamed to initiator");
+	$expat->$error("initiative renamed to initiator");
 	$o->{initiator} = delete $o->{initiative};
     }
 
     if ($type =~ m/^(impasse|destroys)$/) {
 	if (exists $o->{initiator}) {
-	    $expat->xpcroak("$type initiator is always left")
-		if exists $o->{left} || $o->{initiator} eq 'left';
-	    $o->{left} = $o->{initiator};
+	    if (exists $o->{left} || $o->{initiator} eq 'left') {
+		$expat->$warn("$type initiator is always left");
+	    } else {
+		$o->{left} = $o->{initiator};
+	    }
 	}
 	$o->{initiator} = 'left';
     } elsif (exists $o->{initiator}) {
 	my $i = $o->{initiator};
 	if (exists $o->{left} xor exists $o->{right}) {
-	    $expat->xpcroak("initiator is who?")
-		if $i =~ m/^(left|right)$/;
+	    if ($i =~ m/^(left|right)$/) {
+		$expat->$error("initiator is who?");
+		$i = "someone";
+	    }
 	    if (exists $o->{left}) {
 		$o->{right} = $i;
 		$o->{initiator} = 'right'
@@ -156,8 +193,10 @@ sub new {
 		$o->{initiator} = 'left';
 	    }
 	} else {
-	    $expat->xpcroak("initiator `$i' is left or right?")
-		if $i !~ m/^(left|right)$/;
+	    if ($i !~ m/^(left|right)$/) {
+		$expat->$error("initiator `$i' is left or right?");
+		$i = 'left';
+	    }
 	}
     }
 
@@ -171,43 +210,53 @@ sub new {
     }
 
     if (exists $o->{absent}) {
-	$expat->xpcroak("$o->{absent} can't be absent")
-	    if $type =~ m/^(ready|observes|uneasy|destroys)$/;
-	$expat->xpcroak("initiator is absent?")
-	    if $o->{absent} eq $o->{initiator};
-	$expat->xpcroak("absent `$o->{absent}' is left or right?")
-	    if $o->{absent} !~ m/^(left|right)$/;
+	if ($type =~ m/^(ready|observes|uneasy|destroys)$/) {
+	    $expat->$error("$o->{absent} can't be absent");
+	    delete $o->{absent};
+	} elsif ($o->{absent} eq $o->{initiator}) {
+	    $expat->$error("initiator is absent?");
+	    delete $o->{absent};
+	} elsif ($o->{absent} !~ m/^(left|right)$/) {
+	    $expat->$error("absent `$o->{absent}' is left or right?");
+	    delete $o->{absent};
+	}	    
     }
 
     if ($type eq 'ready') {
-	$expat->xpcroak("ready is not initiated")
-	    if exists $o->{initiator};
+	if (exists $o->{initiator}) {
+	    $expat->$warn("ready is not initiated");
+	    delete $o->{initiator};
+	}
     } elsif ($type =~ m/^(observes|uneasy)$/) {
 	# OK
     } else {
 	my $i = $o->{initiator} || 'undef';
-	$expat->xpcroak("initiator `$i' is left or right?")
-	    if $i !~ m/^(left|right)$/;
+	if ($i !~ m/^(left|right)$/) {
+	    $expat->$error("initiator `$i' is left or right?");
+	    $o->{initiator} = 'left';
+	}
     }
 
-    $expat->xpcroak("left is missing")
-	if !$o->{left};
-    $expat->xpcroak("right is missing")
-	if !$o->{right};
+    for (qw(left right)) {
+	if (!$o->{$_}) {
+	    $expat->$error("`$_' is missing");
+	    $o->{$_} = 'someone';
+	}
+    }
 
-    $expat->xpcroak("$o->{left} competing with himself/herself")
-	if $o->{left} eq $o->{right};
+    if ($o->{left} eq $o->{right}) {
+	$expat->$error("$o->{left} competing with himself/herself");
+	$o->{right} = 'sometwo';
+    }
 	
     if ($type eq 'impasse') {
-	#$expat->xpcroak("impasse to what?")
-	#    if !sum(map { exists $o->{$_} } qw(re echo amend absent));
-	$expat->xpcroak("choose *one*: re/echo/amend/absent")
+	$expat->$warn("choose *one*: re/echo/amend/absent")
 	    if sum(map { exists $o->{$_} } qw(re echo amend absent)) != 1;
 	my $re = $o->{re} || $o->{echo} || $o->{amend};
 	if ($re) {
 	    my $aty = $re->{type};
-	    $expat->xpcroak("impasse to `$aty'?")
-		if $aty =~ m/^(observes|ready)$/;
+	    $expat->$error("impasse to `$aty'?")
+		if ($aty =~ m/^(observes|ready)$/);
 	}
     }
 
@@ -219,20 +268,20 @@ sub new {
 
 	my $v1 = $re->victim;
 	my $v2 = $o->victim;
-	$expat->xpcroak("echo victim `$v1' changed to `$v2'?")
+	$expat->$error("echo victim `$v1' changed to `$v2'?")
 	    if $v1 ne $v2;
     }
 
     if (exists $o->{re}) {
 	my $re = $o->{re};
-	$expat->xpcroak("can't re readiness")
+	$expat->$error("can't re readiness")
 	    if $re->{type} eq 'ready';
 	
 	my $i1 = $re->initiator;
 	my $i2 = $o->initiator;
 
 	if (!$i1 and !$i2) {
-	    $expat->xpcarp("who has initiator?");
+	    $expat->$warn("who is initiator?");
 	} elsif (defined($i1) xor defined($i2)) {
 	    if ($i1) {
 		$o->{initiator} = $i1 eq $o->{left}? 'right':'left';
@@ -243,7 +292,7 @@ sub new {
 		$re->{initiator} = $i2 eq $re->{left}? 'right':'left';
 	    }
 	} elsif ($i1 eq $i2) {
-	    $expat->xpcroak("$i1 kept the initiative")
+	    $expat->$error("$i1 kept the initiative")
 	}
 
 	$i1 = $re->initiator;
@@ -251,11 +300,11 @@ sub new {
 	$i2 = $o->initiator;
 	my $v2 = $o->victim;
 
-	$expat->xpcarp("`$i1' (not `$v2') in re")
+	$expat->$warn("`$i1' (not `$v2') in re")
 	    if $v2 ne '*' && $i1 ne $v2;
-	$expat->xpcarp("`$i2' (not `$v1') in re")
+	$expat->$warn("`$i2' (not `$v1') in re")
 	    if $v1 ne '*' && $v1 ne $i2;
-	$expat->xpcarp("$i1 is the sole initiator; you want amend?")
+	$expat->$warn("$i1 is the sole initiator; you want amend?")
 	    if $i1 eq $i2;
     }
 
@@ -265,7 +314,7 @@ sub new {
 	my $i2 = $o->initiator;
 
 	if (!$i1 and !$i2) {
-	    $expat->xpcroak("who is initiator?");
+	    $expat->$error("who is initiator?");
 	} elsif (defined($i1) xor defined($i2)) {
 	    if ($i1) {
 		$o->{initiator} = $i1 eq $o->{left}? 'left':'right';
@@ -273,10 +322,10 @@ sub new {
 		$am->{initiator} = $i2 eq $am->{left}? 'left':'right';
 	    }
 	} elsif ($i1 ne $i2) {
-	    $expat->xpcroak("$i1 didn't keep the initiative")
+	    $expat->$error("$i1 didn't keep the initiative")
 	}
 
-	$expat->xpcroak($am->victim." ne ".$o->victim)
+	$expat->$error($am->victim." ne ".$o->victim)
 	    if $am->victim ne '*' && $am->victim ne $o->victim;
     }
 
@@ -294,11 +343,14 @@ sub new {
 	exists $o->{amend};
 
     if (exists $o->{revoke}) {
-	my $label = $o->{revoke}->label;
+	my $re = $o->{revoke};
+	my $label = $re->label;
 	if (delete $Open{ $label }) {
 	    # OK
+	} elsif ($re->{type} =~ /^(steals|exposes)$/ and $re->{tension}) {
+	    # OK
 	} else {
-	    $expat->xpcarp("amend revoke=$label");
+	    $expat->$warn("ambiguous amend revoke=$label");
 	}
     }
     if (exists $o->{echo}) {
@@ -308,7 +360,7 @@ sub new {
 	    if (delete $Open{ $label }) {
 		# OK
 	    } else {
-		$expat->xpcarp("amend echo=$label");
+		$expat->$warn("ambiguous amend echo=$label");
 	    }
 	} else {
 	    # joinder OK
@@ -322,16 +374,16 @@ sub new {
 	} else {
 	    if ($re->{type} eq 'admires' and $re->{before}) {
 		# OK
-	    } elsif ($re->{type} eq 'accepts' and $re->{tension}) {
+	    } elsif ($type eq 'admires' and $o->{before}) {
+		# OK
+	    } elsif ($re->{type} =~ m/^(accepts|steals)$/ and $re->{tension}) {
 		# OK
 	    } elsif ($re->{type} =~ m/^(observes|uneasy)$/) {
 		# OK
 	    } elsif ($re->victim eq '*') {
 		# OK
-	    } elsif ($type eq 'admires' and $o->{before}) {
-		# OK
 	    } else {
-		$expat->xpcarp("amend re=$label");
+		$expat->$warn("ambiguous amend re=$label");
 	    }
 	}
     }
@@ -343,7 +395,8 @@ sub new {
     } elsif ($type =~ m/(accepts|steals|admires|exposes)$/ and
 	     (exists $o->{tension} or exists $o->{after})) {
 	# OK
-    } elsif ($type eq 'admires' and exists $o->{before}) {
+    } elsif ($type eq 'admires' and exists $o->{before} and
+	     $o->{initiator} eq 'right') {
 	# OK
     } else {
 	$Open{ $o->label } = $o;
@@ -562,7 +615,7 @@ sub emotion {
 		} elsif ($te eq 'relaxed') {
 		    'humble confidence';
 		} else {
-		    'humbled';
+		    'humble / meek';
 		}
 	    } else {
 		my $te = $o->{after};
@@ -576,7 +629,7 @@ sub emotion {
 		if ($te eq 'focused') {
 		    'mocking';
 		} elsif ($te eq 'relaxed') {
-		    'insulting';
+		    '?';
 		} else {
 		    'euphemism';
 		}

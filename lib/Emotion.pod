@@ -242,7 +242,7 @@ it.
 The standard suggested here is that the participants must match but
 the initiator must flip-flop.  These rules were discovered by
 surveying many Q&A style exchanges and the rules seem to work well in
-practice.  C<re> (meaning "in response to") and C<id> attributes serve
+practice.  C<re> (meaning "in reaction to") and C<id> attributes serve
 the purpose.  For example:
 
   <accepts id="q1" right="child" initiator="adult" before="focused">
@@ -325,9 +325,77 @@ The parser tries to keep track of situations which remain unresolved
 In general, stories don't stop abruptly leaving unresolved
 cliffhangers.  Here is a clue that can be used to debug annotations.
 After processing a transcript, C<empathize> outputs all the situations
-which do not find closure.  For example, until Joey picks up the phone
-or the clerk gives up in disgust, the pizza situation will be flagged
-as unresolved.
+which do not find closure.  In the above example, the situation is
+pending until Joey picks up the phone or the clerk gives up in disgust
+or whatever.
+
+Similarly, a warning is triggered when the same situation is resolved
+more than once.  For example:
+
+  <accepts id="o3" initiator="clerk" left="Joey" before="focused">
+    How many pizzas do you want?
+  </accepts>
+
+  <accepts re="o3" initiator="Joey" before="focused">
+    i want exactly three pizzas.
+  </accepts>
+
+  <accepts re="o3" initiator="Joey" before="focused">
+    i want exactly two pizzas.
+  </accepts>
+
+Notice the situation C<o3> is listed in the C<re> attribute twice.
+This is unnecessarily ambiguous.  There are a variety of ways to
+better model the scenario.
+
+=head2 Revoke / Amend
+
+Sometimes i say something which i wish i never said.  The C<revoke>
+attribute reflects this scenario.
+
+  <accepts id="q1" initiator="Spike" left="Jeff" before="focused">
+    What time is it?
+  </accepts>
+
+  <impasse id="a1" re="q1" tension="focused" right="Spike" initiator="Jeff">
+    No idea!
+  </observes>
+
+  <uneasy id="q2" amend="q1" initiator="Spike" left="Jeff" intensity="gentle">
+    Spike gives Jeff a threatening look.
+  </uneasy>
+
+  <accepts id="a2" revoke="a1" re="q1" before="focused" left="Spike"
+           initiator="Jeff">
+    Eleven hundred hours!  Sir!
+  </accepts>
+
+C<q1> is resolved by C<a1> until C<q1> becomes pending again when
+C<a1> is revoked by C<a2>.  Now that C<q1> is again pending, the C<re>
+attribute can be used in C<a2> to substitute a revised reaction.
+
+To contrast, Spike's demand for the time in C<q1> is not revoked by
+his subsequent threatening look in C<q2>.  Here, what needs to be
+reflected is Spike's change in tone, but not change in fact.  The
+C<amend> attribute serves this purpose.
+
+=head2 Echo
+
+The C<echo> attribute represents the repeated emphasis of the same
+situation.
+
+  <impasse id="m1" left="child" right="mother" tension="focused"
+           absent="right">
+    Where is my mother?
+  </impasse>
+
+  <impasse echo="m1" id="m2" left="child" right="mother" tension="stifled">
+    i miss my mom!  :-(
+  </impasse>
+
+Once echo'd, C<m1> is no longer pending.  Only C<m2> remains pending.
+
+=head2 Absent
 
 Another way to manage resolution is to declare the victim absent.
 Here is an example:
@@ -347,8 +415,8 @@ truly C<accepts>, C<observes>, or even merely:
   </ready>
 
 Notice that the C<absent> attribute is unnecessary in this case.  A
-variety of situations do not trigger any need for resolution, and
-C<ready> is one of them.
+few situations do not trigger any need for resolution, and C<ready> is
+one of them.
 
 =head2 Wildcards
 

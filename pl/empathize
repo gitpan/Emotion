@@ -23,7 +23,8 @@ use XML::Parser;
 use Emotion;
 
 our $VERSION = '2000.11.20';
-our %opt = (context => 0);
+our %opt = (context => 0,
+	    warn => 2);
 
 use constant ABSENT_COLOR => '#c0a0a0';
 
@@ -132,6 +133,15 @@ our $cregex = do {
     my $out;
     my @Situation;
     my @Stack;
+
+    sub output_skeleton {
+	while (@Situation) {
+	    my ($o) = shift @Situation;
+	    characters($out, "$o->{phrase_id}.");
+	    emptyTag($out, 'BR')
+		if @Situation;
+	}
+    }
 
     sub output_emotions {
 	while (@Situation) {
@@ -296,11 +306,15 @@ our $cregex = do {
 	} elsif ($elem eq 'talk') {
 	    endTag($out, 'TD');
 	    if (@Situation) {
-		startTag($out, 'TD', VALIGN => 'TOP', BGCOLOR => '#ccffcc');
-		if (!$opt{invert}) {
-		    output_situations();
-		} else {
+		my @space = (WIDTH => '30%') if $opt{omit};
+		startTag($out, 'TD', VALIGN => 'TOP', BGCOLOR => '#ccffcc',
+			 @space);
+		if ($opt{omit}) {
+		    output_skeleton();
+		} elsif ($opt{invert}) {
 		    output_emotions();
+		} else {
+		    output_situations();
 		}
 		endTag($out, 'TD');
 	    }
@@ -339,13 +353,15 @@ our $cregex = do {
 	print $out "\n";
 	close $out;
 
-	print "unresolved: ";
-	for my $o (sort { $a->{dialog_id} <=> $b->{dialog_id} or
-			      $a->{phrase_id} <=> $b->{phrase_id} }
-		 Emotion::unresolved()) {
-	    print $o->label . ' ';
+	if ($opt{warn}) {
+	    print "unresolved: ";
+	    for my $o (sort { $a->{dialog_id} <=> $b->{dialog_id} or
+				  $a->{phrase_id} <=> $b->{phrase_id} }
+		     Emotion::unresolved()) {
+		print $o->label . ' ';
+	    }
+	    print "\n";
 	}
-	print "\n";
     }
 }
 
@@ -650,11 +666,15 @@ Situations without a clear-cut initiator are listed in both tables.");
 }
 
 sub usage {
-    print "usage: empathize [--invert] <transcript>
+    print "usage: empathize [--invert] [--omit] <transcript>
        empathize --index <transcript> [<transcript> ...]
 
-       --help     this message
-       --version  show version and exit
+       --silent      suppress diagnostics
+       --permissive  demote errors to warnings
+       --pedantic    promote warnings to errors
+
+       --help        this message
+       --version     show version and exit
 ";
     exit;
 }
@@ -665,10 +685,18 @@ while (@ARGV and $ARGV[0] =~ m/^-/) {
 	print "$0 v$VERSION
 ";
 	exit;
+    } elsif ($opt eq '--silent') {
+	$opt{warn} = 0;
+    } elsif ($opt eq '--permissive') {
+	$opt{warn} = 1;
+    } elsif ($opt eq '--pedantic') {
+	$opt{warn} = 3;
     } elsif ($opt eq '--index') {
 	$opt{index}=1;
     } elsif ($opt eq '--invert') {
 	$opt{invert}=1;
+    } elsif ($opt eq '--omit') {
+	$opt{omit}=1;
     } elsif ($opt eq '--help') {
 	usage();
     } else {
@@ -677,6 +705,8 @@ while (@ARGV and $ARGV[0] =~ m/^-/) {
     }
 }
 
+$Emotion::WarnLevel = $opt{warn};
+
 if ($opt{index}) {
     usage()
 	if !@ARGV;
@@ -684,6 +714,10 @@ if ($opt{index}) {
 	if $opt{invert};
     Index(@ARGV);
 } else {
+    if ($opt{invert} and $opt{omit}) {
+	warn "--omit and --invert are mutually exclusive";
+	usage();
+    }
     usage()
 	if @ARGV != 1;
     Transcript($ARGV[0]);
