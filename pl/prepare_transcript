@@ -188,6 +188,8 @@ sub start {
 	set_save_text(1);
     } elsif ($elem eq 'script') {
 	# ok
+    } elsif ($elem =~ /^i$/i) {
+	$out->startTag('I');
     } elsif ($elem eq 'scene') {
 	$out->startTag('P');
 	$out->startTag('B');
@@ -227,6 +229,8 @@ sub end {
 	$out->endTag('HEAD');
 
 	$out->startTag('BODY', bgcolor=>"#FFFFFF", text=>"#000000");
+    } elsif ($elem =~ /^i$/i) {
+	$out->endTag('I');
     } elsif ($elem eq 'scene') {
 	$out->endTag;
 	$out->endTag;

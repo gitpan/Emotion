@@ -12,7 +12,7 @@
 
 use strict;
 package Emotion;
-our $VERSION = '0.06';
+our $VERSION = '0.07';
 
 our $Stem;
 our $DialogID;
@@ -236,7 +236,15 @@ sub new {
 	}
     }
 
-    if ($type !~ m/^(observes|uneasy|ready)$/ and !exists $o->{absent}) {
+    if (exists $o->{absent}) {
+	# OK
+    } elsif ($type =~ m/^(observes|uneasy|ready)$/) {
+	# OK
+    } elsif ($type eq 'accepts' and exists $o->{tension}) {
+	# OK
+    } elsif ($type eq 'admires' and exists $o->{before}) {
+	# OK
+    } else {
 	$Open{ $o->label } = $o;
     }
 

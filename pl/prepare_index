@@ -82,6 +82,8 @@ sub start {
 	set_save_text(1);
     } elsif ($elem eq 'script') {
 	# ok
+    } elsif ($elem =~ m/^i$/i) {
+	# OK
     } elsif ($elem eq 'scene') {
     } elsif ($elem eq 'talk') {
         Emotion::set_speaker($attr{who});

@@ -10,6 +10,36 @@ in perl for further processing.
 
 =head1 DESCRIPTION
 
+Most of the complexity of this module is learning how to annotate
+free-form text with information about what competition is taking
+place.  The API is simple.
+
+=over 4
+
+=item * Emotion::set_transcript($xml_file)
+
+=item * my $dialog_id = Emotion::set_speaker($who)
+
+=item * my @pending = Emotion::unresolved()
+
+=back
+
+The code assumes that you are using the expat based XML::Parser.  It
+would not be difficult to make the code generic enough to interface
+with any XML parser.
+
+=head2 Emotion::Atom Methods
+
+=over 4
+
+=item * my $situation = Emotion::Atom->new($expat, $attr)
+
+=item * my $emotion = $atom->emotion;
+
+=back
+
+=head1 XML TUTORIAL
+
 The minimum situation consists of the type of competition and two
 opponents.
 
@@ -211,11 +241,11 @@ question.  Notice that there is no indication of the question-answer
 relationship between the two scenarios.
 
 To encode question-answer relationship, we need some standard to
-recognize them.  Our constraint is that the C<left> and C<right>
-participants must match and the initiator must flip-flop.  These rules
-were found by surveying many question-answer exchanges and the rules
-seem to work well in practice.  The C<id> and C<answer> attributes
-encode this information as follows:
+recognize them.  Our constraint is that the participants must be
+unchanging but the initiator must flip-flop.  These rules were found
+by surveying many question-answer exchanges and the rules seem to work
+well in practice.  The C<id> and C<answer> attributes encode this
+information as follows:
 
   <accepts id="q1" right="child" initiator="adult" before="focused">
     Does your teddy bear have brown fur?
@@ -224,6 +254,8 @@ encode this information as follows:
   <accepts answer="q1" left="parent" initiator="child" before="focused">
     Yes.
   </accepts>
+
+=head2 Context
 
 Here is a prior example updated with new markup:
 
