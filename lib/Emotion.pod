@@ -4,15 +4,15 @@ Emotion - discrete emotion annotation processing
 
 =head1 SYNOPSIS
 
-  empathize <script>
-  empathize --index <script> [<script> ...]
+  empathize <transcript>
+  empathize --index <transcript> [<transcript> ...]
 
 =head1 DESCRIPTION
 
 The most difficult part of this module is learning how to annotate
 free-form text with information about what competition is taking
 place.  If you haven't studied http://ghost-wheel.net then go do that
-first.
+now.
 
 The first part of this document describes the XML representation of
 3rd person annotations and validation rules.  The second part
@@ -279,8 +279,8 @@ which do not find closure.  For example, until Joey picks up the phone
 or the clerk gives up in disgust, the pizza situation will be flagged
 as unresolved.
 
-Another way to manage resolution is to declare that one side of the
-situation is absent.  Here is an example:
+Another way to manage resolution is to declare that the victim is
+absent.  Here is an example:
 
   <talk who="teacher">
     <accepts left="students" before="focused" absent="left">
@@ -297,7 +297,7 @@ truly C<accepts>, C<observes>, or even merely:
   </ready>
 
 Notice that the C<absent> attribute is unnecessary in this case.  A
-variety of situations do not trigger the need for any resolution, and
+variety of situations do not trigger any need for resolution, and
 C<ready> is one of them.
 
 =head1 EMOTION LIBRARY API
@@ -321,6 +321,10 @@ C<ready> is one of them.
 =item * my $emotion = $atom->emotion;
 
 =back
+
+=head1 SEE ALSO
+
+http://ghost-wheel.net
 
 =cut
 

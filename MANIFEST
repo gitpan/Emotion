@@ -6,6 +6,5 @@ README
 TODO
 lib/Emotion.pm
 lib/Emotion.pod
-lib/Emotion/Constants.pm
 pl/empathize
 t/01.t

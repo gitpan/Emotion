@@ -22,10 +22,12 @@ use Carp;
 use XML::Parser;
 use Emotion;
 
-our $VERSION = '2000.11.18';
-our %opt;
+our $VERSION = '2000.11.19';
+our %opt = (context => 0);
 
-{################################ a lightweight XML::Writer
+use constant ABSENT_COLOR => '#c0a0a0';
+
+{################################
 ## based on XML::Writer by David Megginson <david@megginson.com>
 ##
      my @ElementStack;
@@ -41,7 +43,7 @@ our %opt;
 
      sub characters {
 	 my ($out, $data) = @_;
-	 $data =~ s/( \& | \< | \> )/$Entity{$1}/sgx;
+	 $data =~ s/([&<>])/$Entity{$1}/sgx;
 	 print $out $data;
      }
 
@@ -82,7 +84,7 @@ our %opt;
 	 my $out = shift;
 	 while (@_) {
 	     my ($k,$v) = splice @_, 0, 2;
-	     $v =~ s/( \& | \< | \> | \" )/$Entity{$1}/sgx;
+	     $v =~ s/([&<>"])/$Entity{$1}/sgx;
 	     print $out qq( $k="$v");
 	 }
      }
@@ -131,6 +133,15 @@ our $cregex = do {
     my @Situation;
     my @Stack;
 
+    sub output_emotions {
+	while (@Situation) {
+	    my ($o) = shift @Situation;
+	    characters($out, "$o->{phrase_id}. ".$o->emotion);
+	    emptyTag($out, 'BR')
+		if @Situation;
+	}
+    }
+
     sub output_situations {
 	while (@Situation) {
 	    my ($o) = shift @Situation;
@@ -138,14 +149,15 @@ our $cregex = do {
 	    
 	    if (($opt_context and exists $o->{context}) or
 		($opt_answer and exists $o->{answer}) or
-		exists $o->{echo})
+		exists $o->{echo} or
+		exists $o->{amend})
 	    {
 		characters($out, '(');
 		my $space;
 		my @todo;
 		push @todo, 'context' if $opt_context;
 		push @todo, 'answer' if $opt_answer;
-		push @todo, 'echo';
+		push @todo, 'echo', 'amend';
 		for my $ref (@todo) {
 		    next if !exists $o->{$ref};
 		    my $l = $o->{$ref};
@@ -191,7 +203,9 @@ our $cregex = do {
 		characters($out, " destroys $o->{right}");
 	    } elsif ($type eq 'impasse') {
 		dataElement($out, 'B', $o->{left});
-		characters($out, " and $o->{right} are at an impasse");
+		characters($out, " and ");
+		out_rival($out, $o, 'right');
+		characters($out, " are at an impasse");
 	    } else {
 		my $pretty = $type;
 		$pretty = "steals from"
@@ -216,7 +230,7 @@ our $cregex = do {
 	if (($o->{initiator}||'undef') eq $side) {
 	    dataElement($out, 'B', $o->{$side});
 	} elsif (($o->{absent}||'undef') eq $side) {
-	    dataElement($out, 'FONT', $o->{$side}, COLOR => '#c0a0a0');
+	    dataElement($out, 'FONT', $o->{$side}, COLOR => ABSENT_COLOR);
 	} else {
 	    characters($out, $o->{$side});
 	}
@@ -239,7 +253,11 @@ our $cregex = do {
 	    startTag($out, 'TD', VALIGN => 'TOP');
 	    my $id = Emotion::set_speaker($attr{who});
 	    startTag($out, 'A', NAME => "l$id");
-	    dataElement($out, 'TT', "$id $attr{who}: ");
+	    if (!$attr{who}) {
+		dataElement($out, 'TT', "$id: ");
+	    } else {
+		dataElement($out, 'TT', "$id $attr{who}: ");
+	    }
 	    endTag($out, 'A');
 	} elsif ($elem =~ /$cregex/) {
 	    $attr{type} = $elem;
@@ -278,7 +296,11 @@ our $cregex = do {
 	    endTag($out, 'TD');
 	    if (@Situation) {
 		startTag($out, 'TD', VALIGN => 'TOP', BGCOLOR => '#ccffcc');
-		output_situations();
+		if (!$opt{invert}) {
+		    output_situations();
+		} else {
+		    output_emotions();
+		}
 		endTag($out, 'TD');
 	    }
 	    endTag($out, 'TR');
@@ -301,7 +323,7 @@ our $cregex = do {
 	doctype($out, "HTML", "-//W3C//DTD HTML 4.0 Transitional//EN", '');
 	startTag($out, 'HTML');
 	
-	my $p = XML::Parser->new(ErrorContext => 1);
+	my $p = XML::Parser->new(ErrorContext => $opt{context});
 	$p->setHandlers(Char => \&text,
 			Start => \&transcript_start,
 			End => \&transcript_end);
@@ -317,7 +339,8 @@ our $cregex = do {
 	close $out;
 
 	print "unresolved: ";
-	for my $o (sort { $a->{dialog_id} <=> $b->{dialog_id} }
+	for my $o (sort { $a->{dialog_id} <=> $b->{dialog_id} or
+			      $a->{phrase_id} <=> $b->{phrase_id} }
 		 Emotion::unresolved()) {
 	    print $o->label . ' ';
 	}
@@ -363,6 +386,17 @@ our $cregex = do {
 	}
     }
 
+    sub show_rival {
+	my ($out, $o, $side, $name) = @_;
+	if (($o->{initiator}||'?') eq $side) {
+	    dataElement($out, 'B', "[$name]");
+	} elsif (($o->{absent}||'?') eq $side) {
+	    dataElement($out, 'FONT', "[$name]", COLOR => ABSENT_COLOR);
+	} else {
+	    characters($out, "[$name]");
+	}
+    }
+
     sub show_atom {
 	my ($out, $i) = @_;
 
@@ -377,35 +411,32 @@ our $cregex = do {
     
 	if ($type eq 'ready') {
 	    characters($out, "[0] and [0] are at readiness");
-	} elsif ($type eq 'observes') {
-	    characters($out, "[0] observes [-]");
-	} elsif ($type eq 'uneasy') {
-	    characters($out, "[-] is made uneasy by [0]");
 	} elsif ($type eq 'destroys') {
 	    dataElement($out, 'B', "[-]");
 	    characters($out, " destroys [-]");
 	} elsif ($type eq 'impasse') {
 	    dataElement($out, 'B', "[+]");
-	    characters($out, " and [+] are at an impasse");
+	    characters($out, " and ");
+	    show_rival($out, $i, 'right', '+');
+	    characters($out, " are at an impasse");
 	} else {
-	    my $init = $i->{initiator};
 	    my $pretty = $type;
 	    $pretty = "steals from"
 		if $pretty eq 'steals';
+	    $pretty = "is made uneasy by"
+		if $pretty eq 'uneasy';
 	    my ($left,$right);
 	    if ($type eq 'steals') { $left='-'; $right='+'; }
 	    elsif ($type eq 'exposes') { $left='+'; $right='-'; }
 	    elsif ($type eq 'accepts') { $left='0'; $right='+'; }
 	    elsif ($type eq 'admires') { $left='+'; $right='0'; }
+	    elsif ($type eq 'observes') { $left='0'; $right='-'; }
+	    elsif ($type eq 'uneasy') { $left='-'; $right='0'; }
 	    else { die $type }
 	    
-	    if ($init eq 'left') {
-		dataElement($out, 'B', "[$left]");
-		characters($out, " $pretty [$right]");
-	    } else {
-		characters($out, "[$left] $pretty ");
-		dataElement($out, 'B', "[$right]");
-	    }
+	    show_rival($out, $i, 'left', $left);
+	    characters($out, " $pretty ");
+	    show_rival($out, $i, 'right', $right);
 	}
     }
     
@@ -575,6 +606,9 @@ Situations without a clear-cut initiator are listed in both tables.");
 	    if (exists $i->{answer}) {
 		dataElement($out, 'I', ' answering ');
 		show_atom($out, $i->{answer});
+	    } elsif (exists $i->{echo}) {
+		dataElement($out, 'I', ' echoing ');
+		show_atom($out, $i->{echo});
 	    }
 
 	    for my $o (@$list) {
@@ -601,7 +635,7 @@ Situations without a clear-cut initiator are listed in both tables.");
 	      %Pair = ();
 	      %Character = ();
 
-	      my $p = XML::Parser->new(ErrorContext => 1);
+	      my $p = XML::Parser->new(ErrorContext => $opt{context});
 	      $p->setHandlers(Start => \&index_start,
 			      End => \&index_end,
 			      Char => \&text);
@@ -615,8 +649,8 @@ Situations without a clear-cut initiator are listed in both tables.");
 }
 
 sub usage {
-    print "usage: empathize <script>
-       empathize --index <script> [<script> ...]
+    print "usage: empathize [--invert] <transcript>
+       empathize --index <transcript> [<transcript> ...]
 
        --help     this message
        --version  show version and exit
@@ -632,6 +666,8 @@ while (@ARGV and $ARGV[0] =~ m/^-/) {
 	exit;
     } elsif ($opt eq '--index') {
 	$opt{index}=1;
+    } elsif ($opt eq '--invert') {
+	$opt{invert}=1;
     } elsif ($opt eq '--help') {
 	usage();
     } else {
@@ -643,6 +679,8 @@ while (@ARGV and $ARGV[0] =~ m/^-/) {
 if ($opt{index}) {
     usage()
 	if !@ARGV;
+    warn "--invert: the index already shows the inverse"
+	if $opt{invert};
     Index(@ARGV);
 } else {
     usage()

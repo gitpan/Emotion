@@ -1,4 +1,4 @@
-# Copyright (C) 2000 Free Software Foundation
+# Copyright (C) 2000 Free Software Foundation, Inc.
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -9,10 +9,15 @@
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
 
 use strict;
 package Emotion;
-our $VERSION = '0.09';
+our $VERSION = '0.10';
 
 our $Stem;
 our $DialogID;
@@ -54,7 +59,7 @@ our %TypeCode = (destroys => 0,
 		 ready => 8);
 
 package Emotion::Atom;
-use Emotion::Constants qw(L R);
+use List::Util qw(sum);
 
 sub new {
     my ($class, $expat, $attr) = @_;
@@ -82,7 +87,7 @@ sub new {
     $expat->xpcroak("reply renamed to answer")
 	if exists $o->{reply};
 
-    for my $kind (qw(echo revoke closing context answer)) {
+    for my $kind (qw(echo revoke amend context answer)) {
 	next if !exists $o->{$kind};
 	my $to = $o->{$kind};
 	$o->{$kind} = $Link{$to};
@@ -130,29 +135,34 @@ sub new {
     }
 
     if ($type =~ m/^(impasse|destroys)$/) {
-	$expat->xpcroak("initiator is always left")
+	$expat->xpcroak("$type initiator is always left")
 	    if exists $o->{initiator};
 	$o->{initiator} = 'left';
     } elsif (exists $o->{initiator}) {
 	my $i = $o->{initiator};
 	if (exists $o->{left} xor exists $o->{right}) {
+	    $expat->xpcroak("initiator is who?")
+		if $i =~ m/^(left|right)$/;
 	    if (exists $o->{left}) {
 		$o->{right} = $i;
-		$o->{initiator} = 'right';
+		$o->{initiator} = 'right'
 	    } else {
 		$o->{left} = $i;
 		$o->{initiator} = 'left';
 	    }
+	} else {
+	    $expat->xpcroak("initiator `$i' is left or right?")
+		if $i !~ m/^(left|right)$/;
 	}
-	$expat->xpcroak("initiator `$o->{initiator}' is left or right?")
-	    if $o->{initiator} !~ m/^(left|right)$/;
     }
 
-    for my $role (qw(left right)) {
-	next if exists $o->{$role};
-	$o->{$role} = $Speaker;
-	$o->{initiator} ||= $role
-	    if $type !~ m/^(ready|observes|uneasy|impasse|destroys)$/;
+    if ($Speaker) {
+	for my $role (qw(left right)) {
+	    next if exists $o->{$role};
+	    $o->{$role} = $Speaker;
+	    $o->{initiator} ||= $role
+		if $type !~ m/^(ready|observes|uneasy|impasse|destroys)$/;
+	}
     }
 
     if (exists $o->{absent}) {
@@ -175,19 +185,20 @@ sub new {
 	    if $i !~ m/^(left|right)$/;
     }
 
-    $expat->xpcroak("left and right are missing")
-	if !exists $o->{left} && !exists $o->{right};
+    $expat->xpcroak("left is missing")
+	if !$o->{left};
+    $expat->xpcroak("right is missing")
+	if !$o->{right};
 
     $expat->xpcroak("$o->{left} competing with himself/herself")
 	if $o->{left} eq $o->{right};
 	
     if ($type eq 'impasse') {
-	$expat->xpcroak("impasse to what?")
-	    if (!exists $o->{answer} and !exists $o->{echo} and
-		!exists $o->{absent});
-	$expat->xpcroak("answer *and* echo?")
-	    if exists $o->{answer} && exists $o->{echo};
-	my $re = $o->{answer} || $o->{echo};
+	#$expat->xpcroak("impasse to what?")
+	#    if !sum(map { exists $o->{$_} } qw(answer echo amend absent));
+	$expat->xpcroak("choose *one*: answer/echo/amend")
+	    if sum(map { exists $o->{$_} } qw(answer echo amend absent)) != 1;
+	my $re = $o->{answer} || $o->{echo} || $o->{amend};
 	if ($re) {
 	    my $aty = $re->{type};
 	    $expat->xpcroak("impasse to `$aty'?")
@@ -196,6 +207,12 @@ sub new {
     }
 
     if (exists $o->{echo}) {
+	# are the constraints are wrong?
+	# initiator doesn't matter but victim should match?
+
+	$expat->xpcarp("echo without absent")  # echo implies absent
+	    unless exists $o->{absent};
+
 	my $re = $o->{echo};
 
 	my $i1 = $re->initiator;
@@ -203,9 +220,9 @@ sub new {
 	$expat->xpcroak("echo but initiator switched `$i1'->`$i2'?")
 	    if $i1 ne $i2;
 	
-	$expat->xpcarp("$o->{left} not in answer")
+	$expat->xpcarp("$o->{left} not in echo")
 	    if ($o->{left} ne $re->{left} and $o->{left} ne $re->{right});
-	$expat->xpcarp("$o->{right} not in answer")
+	$expat->xpcarp("$o->{right} not in echo")
 	    if ($o->{right} ne $re->{left} and $o->{right} ne $re->{right});
     }
 
@@ -214,11 +231,6 @@ sub new {
 	$expat->xpcroak("can't answer readiness")
 	    if $re->{type} eq 'ready';
 	
-	$expat->xpcarp("$o->{left} not in answer")
-	    if ($o->{left} ne $re->{left} and $o->{left} ne $re->{right});
-	$expat->xpcarp("$o->{right} not in answer")
-	    if ($o->{right} ne $re->{left} and $o->{right} ne $re->{right});
-
 	my $i1 = $re->initiator;
 	my $i2 = $o->initiator;
 
@@ -233,13 +245,25 @@ sub new {
 	} elsif ($i1 eq $i2) {
 	    $expat->xpcroak("$i1 kept the initiative")
 	}
+
+	$expat->xpcarp($re->initiator." not in answer")
+	    if $re->initiator ne $o->victim;
+	my $v = $re->victim;
+	$expat->xpcarp("$v not in answer")
+	    if $v ne '*' && $v ne $o->initiator;
+    }
+
+    if (exists $o->{amend}) {
+	my $am = $o->{amend};
+	$expat->xpcroak($am->initiator." ne ".$o->initiator)
+	    if $am->initiator ne $o->initiator;
+	$expat->xpcroak($am->victim." ne ".$o->victim)
+	    if $am->victim ne $o->victim;
     }
 
     if (exists $o->{revoke}) {
 	my $oops = $o->{revoke};
 	my @open;
-	push @open, $oops->{closing} if
-	    exists $oops->{closing};
 	push @open, $oops->{answer} if
 	    exists $oops->{answer};
 	for my $z (@open) {
@@ -247,24 +271,34 @@ sub new {
 	}
     }
 
-    my @close;
-    push @close, $o->{revoke} if
-	exists $o->{revoke};
-    push @close, $o->{closing} if
-	exists $o->{closing};
-    push @close, $o->{answer} if
-	exists $o->{answer};
-    for my $cl (@close) {
-	my $label = $cl->label;
-	if (exists $Open{ $label }) {
-	    delete $Open{ $label }
+    delete $Open{ $o->{amend}->label } if 
+	exists $o->{amend};
+
+    if (exists $o->{revoke}) {
+	my $label = $o->{revoke}->label;
+	if (delete $Open{ $label }) {
+	    # OK
 	} else {
-	    $o->{amend}{ $label } = 1;  # ??
 	    $expat->xpcarp("amend $label");
+	}
+    }
+    if (exists $o->{answer}) {
+	my $label = $o->{answer}->label;
+	if (delete $Open{ $label }) {
+	    # OK
+	} else {
+	    my $an = $o->{answer};
+	    if ($an->{type} eq 'admires' and $an->{before}) {
+		# OK
+	    } else {
+		$expat->xpcarp("amend $label");
+	    }
 	}
     }
 
     if (exists $o->{absent}) {
+	# OK
+    } elsif (exists $o->{closing}) {
 	# OK
     } elsif ($type =~ m/^(observes|uneasy|ready)$/) {
 	# OK
@@ -295,13 +329,25 @@ sub initiator {  # NUKE? XXX
     }
 }
 
-sub simple_hash {
+sub victim {
     my ($o) = @_;
+    my $i = $o->{initiator};
+    if ($i) {
+	if ($i eq 'left') {
+	    $o->{right};
+	} else {
+	    $o->{left};
+	}
+    } elsif ($o->{type} =~ m/^(impasse|destroys)$/) {
+	$o->{right};
+    } else {
+	undef
+    }
+}
 
-    my @k;
-
-    push @k, $TypeCode{ $o->{type} };
-
+sub _accent {
+    my ($o) = @_;
+    my $hash='';
     for my $phase (qw(before after tension)) {
 	next if !exists $o->{$phase};
 	my $pc = do {
@@ -309,36 +355,48 @@ sub simple_hash {
 	    elsif ($phase eq 'tension') { 1; }
 	    else { 2; }
 	};
-	push @k, $pc.'='. substr($o->{$phase},0,2);
+	$hash .= $pc.'='. substr($o->{$phase},0,2);
 	last;
     }
     if (exists $o->{intensity}) {
 	my $i = $o->{intensity};
-	push @k, do {
+	$hash .= do {
 	    if ($i eq 'gentle') { 1; }
 	    elsif ($i eq 'forceful') { 2; }
 	    else { 3 }
 	};
     }
-    
-    if ($o->{type} =~ m/^(steals|exposes|admires|accepts)$/) {
-	push @k, substr $o->{initiator},0,1;
-    }
 
-    join(':', @k)
+    if ($o->{type} =~ m/^(steals|exposes|admires|accepts)$/) {
+	$hash .= substr $o->{initiator},0,1;
+    }
+    if (exists $o->{absent}) {
+	$hash .= 'a';
+    }
+    $hash;
 }
 
 sub hash {
     my ($o) = @_;
-    my @a = $o->simple_hash;
-    for my $link (qw(answer)) {
-	next if !exists $o->{$link};
-	push @a, substr($link,0,2) . ':' . $o->{$link}->simple_hash;
+    my @k;
+
+    push @k, $TypeCode{ $o->{type} };
+    if (exists $o->{answer}) {
+	my $an = $o->{answer};
+	push @k, 'a='.$TypeCode{ $an->{type} };
+	push @k, _accent($an);
     }
-    join ',', @a;
+    push @k, _accent($o);
+
+    join(':', @k)
 }
 
-sub emotion {     # over-simplification
+# This should use more formalized pattern matching instead of
+# a mess of if/then statements...? XXX
+#
+# Otherwise, how to detect multiple matches...?
+
+sub emotion {
     my ($o) = @_;
     my $ty = $o->{type};
     my $answer;
@@ -532,6 +590,8 @@ sub emotion {     # over-simplification
 		if (!$aty) {
 		    if ($te eq 'focused') {
 			'it is done';
+		    } elsif ($te eq 'relaxed') {
+			'yes exactly';
 		    } else {
 			'?';
 		    }
@@ -617,6 +677,22 @@ sub emotion {     # over-simplification
 	    } else {
 		'blasts her with silent force'
 	    }
+	} elsif ($aty eq 'exposes' and ($answer->{before}||'?') eq 'focused') {
+	    if ($in eq 'gentle') {
+		'threaten';
+	    } elsif ($in eq 'forceful') {
+		'narrowly avoid threat';
+	    } else {
+		'?';
+	    }
+	} elsif ($aty eq 'impasse' and $answer->{tension} eq 'focused') {
+	    if ($in eq 'gentle') {
+		'amused by impasse';
+	    } else { '?' }
+	} elsif ($aty eq 'impasse' and $answer->{tension} eq 'relaxed') {
+	    if ($in eq 'gentle') {
+		'amused by counteroffer';
+	    } else { '?' }
 	} else { '?' }
     } elsif ($ty eq 'ready') {
 	my $in = $o->{intensity};
