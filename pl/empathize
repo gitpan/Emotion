@@ -1,0 +1,651 @@
+#!/usr/local/bin/perl -w
+#
+# Copyright (C) 2000 Free Software Foundation, Inc.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
+# 02111-1307, USA.
+
+use strict;
+use Carp;
+use XML::Parser;
+use Emotion;
+
+our $VERSION = '2000.11.18';
+our %opt;
+
+{################################ a lightweight XML::Writer
+## based on XML::Writer by David Megginson <david@megginson.com>
+##
+     my @ElementStack;
+     my %Entity = ('&' => '&amp;',
+		   '<' => '&lt;',
+		   '>' => '&gt;',
+		   '"' => '&quot;');
+
+     sub doctype {
+	 my ($out, $t1, $t2) = @_;
+	 print $out qq(<!DOCTYPE $t1 PUBLIC "$t2" "">\n);
+     }
+
+     sub characters {
+	 my ($out, $data) = @_;
+	 $data =~ s/( \& | \< | \> )/$Entity{$1}/sgx;
+	 print $out $data;
+     }
+
+     sub dataElement {
+	 my ($out, $tag, $data, @attr) = @_;
+	 startTag($out, $tag, @attr);
+	 characters($out, $data);
+	 endTag($out);
+     }
+
+     sub startTag {
+	 my ($out, $tag, @attr) = @_;
+	 push @ElementStack, $tag;
+	 print $out "<$tag";
+	 _showAttributes($out, @attr);
+	 print $out "\n>";
+     }
+
+     sub emptyTag {
+	 my ($out, $tag, @attr) = @_;
+	 print $out "<$tag";
+	 _showAttributes($out, @attr);
+	 print $out "\n />";
+     }
+
+     sub endTag {
+	 my ($out, $tag) = @_;
+	 my $cur = pop @ElementStack;
+	 if (!defined $cur) {
+	     croak("End tag \"$tag\" does not close any open element");
+	 } elsif ($tag and $cur ne $tag) {
+	     croak("Attempt to end element \"$cur\" with \"$tag\" tag");
+	 }
+	 print $out "</$cur\n>";
+     }
+
+     sub _showAttributes {
+	 my $out = shift;
+	 while (@_) {
+	     my ($k,$v) = splice @_, 0, 2;
+	     $v =~ s/( \& | \< | \> | \" )/$Entity{$1}/sgx;
+	     print $out qq( $k="$v");
+	 }
+     }
+}
+
+################ common utilities
+
+our $cregex = do {
+    my @CTags = qw(destroys steals uneasy exposes impasse admires
+		   observes accepts ready);
+    my $tmp = '^('.join('|', @CTags).')$';
+    qr/$tmp/;
+};
+
+{
+    my $Dest;
+    my $CData;
+    
+    sub set_text_dest {
+	($Dest) = @_;
+	my $tmp = $CData;
+	$CData = '';
+	$tmp;
+    }
+
+    sub text {
+	my ($expat, $str) = @_;
+	if (!defined $Dest) {
+	    # ignore
+	} elsif (ref $Dest) {
+	    print $Dest $str;
+	} elsif ($Dest eq 'save') {
+	    $CData .= $str;
+	} else {
+	    warn "Dest=$Dest ?";
+	}
+    }
+}
+
+################
+
+{
+    my $opt_context = 1;  # convert to %opt ?
+    my $opt_answer = 1;
+    my $out;
+    my @Situation;
+    my @Stack;
+
+    sub output_situations {
+	while (@Situation) {
+	    my ($o) = shift @Situation;
+	    characters($out, "$o->{phrase_id}. ");
+	    
+	    if (($opt_context and exists $o->{context}) or
+		($opt_answer and exists $o->{answer}) or
+		exists $o->{echo})
+	    {
+		characters($out, '(');
+		my $space;
+		my @todo;
+		push @todo, 'context' if $opt_context;
+		push @todo, 'answer' if $opt_answer;
+		push @todo, 'echo';
+		for my $ref (@todo) {
+		    next if !exists $o->{$ref};
+		    my $l = $o->{$ref};
+		    characters($out, ' ')
+			if $space;
+		    dataElement($out, 'A', "$ref=".$l->label,
+				HREF=>"#l$l->{dialog_id}");
+		    $space=1;
+		}
+		characters($out, ')');
+	    }
+	
+	    for my $phase (qw(before after intensity tension)) {
+		next if !exists $o->{$phase};
+		my $i = $o->{$phase};
+		characters($out, " $phase=$i");
+		last;
+	    }
+	
+	    characters($out, ' ');
+	    my $type = $o->{type};
+	    if ($type eq 'ready') {
+		if (exists $o->{initiator}) {
+		    my ($r1,$r2);
+		    if ($o->{initiator} eq 'left') {
+			$r1 = $o->{left};
+			$r2 = $o->{right};
+		    } else {
+			$r1 = $o->{right};
+			$r2 = $o->{left};
+		    }
+		    dataElement($out, 'B', $r1);
+		    characters($out, " and $r2 are at readiness");
+		} else {
+		    characters($out, "$o->{left} and $o->{right} are at readiness");
+		}
+	    } elsif ($type eq 'observes') {
+		out_situation($out, $o, 'observes');
+	    } elsif ($type eq 'uneasy') {
+		out_situation($out, $o, 'is made uneasy by');
+	    } elsif ($type eq 'destroys') {
+		dataElement($out, 'B', $o->{left});
+		characters($out, " destroys $o->{right}");
+	    } elsif ($type eq 'impasse') {
+		dataElement($out, 'B', $o->{left});
+		characters($out, " and $o->{right} are at an impasse");
+	    } else {
+		my $pretty = $type;
+		$pretty = "steals from"
+		    if $pretty eq 'steals';
+		out_situation($out, $o, $pretty);
+	    }
+
+	    emptyTag($out, 'BR')
+		if @Situation;
+	}
+    }
+
+    sub out_situation {
+	my ($out, $o, $pretty) = @_;
+	out_rival($out, $o, 'left');
+	characters($out, " $pretty ");
+	out_rival($out, $o, 'right');
+    }
+
+    sub out_rival {
+	my ($out, $o, $side) = @_;
+	if (($o->{initiator}||'undef') eq $side) {
+	    dataElement($out, 'B', $o->{$side});
+	} elsif (($o->{absent}||'undef') eq $side) {
+	    dataElement($out, 'FONT', $o->{$side}, COLOR => '#c0a0a0');
+	} else {
+	    characters($out, $o->{$side});
+	}
+    }
+
+    sub transcript_start {
+	my ($expat, $elem, %attr) = @_;
+	if ($elem eq 'title') {
+	    set_text_dest('save');
+	} elsif ($elem eq 'script') {
+	    # ok
+	} elsif ($elem =~ /^i$/i) {
+	    startTag($out, 'I');
+	} elsif ($elem eq 'scene') {
+	    startTag($out, 'P');
+	    startTag($out, 'B');
+	} elsif ($elem eq 'talk') {
+	    startTag($out, 'TABLE', WIDTH => '100%');
+	    startTag($out, 'TR');
+	    startTag($out, 'TD', VALIGN => 'TOP');
+	    my $id = Emotion::set_speaker($attr{who});
+	    startTag($out, 'A', NAME => "l$id");
+	    dataElement($out, 'TT', "$id $attr{who}: ");
+	    endTag($out, 'A');
+	} elsif ($elem =~ /$cregex/) {
+	    $attr{type} = $elem;
+	    push @Situation, Emotion::Atom->new($expat, \%attr);
+	    my $at = @Situation;
+	    dataElement($out, 'FONT', " [$at ", COLOR => 'blue');
+	    push @Stack, $at;
+	} else {
+	    warn "tag `$elem' ignored";
+	}
+    };
+
+    sub transcript_end {
+	my ($expat, $elem) = @_;
+	if ($elem eq 'title') {
+	    my $title = set_text_dest($out);
+	    startTag($out, 'HEAD');
+	    dataElement($out, 'TITLE', $title);
+	    dataElement($out, 'LINK', '', REV => 'made',
+			HREF => 'mailto:joshua@why-compete.org');
+	    dataElement($out, 'STYLE',
+			  join("\n",
+			       "TD { padding : 2; }",
+			       # "TABLE { width : 100%; border : 0; }"
+			       ),
+			  TYPE => 'text/css');
+	    endTag($out, 'HEAD');
+
+	    startTag($out, 'BODY', bgcolor=>"#FFFFFF", text=>"#000000");
+	} elsif ($elem =~ /^i$/i) {
+	    endTag($out, 'I');
+	} elsif ($elem eq 'scene') {
+	    endTag($out);
+	    endTag($out);
+	} elsif ($elem eq 'talk') {
+	    endTag($out, 'TD');
+	    if (@Situation) {
+		startTag($out, 'TD', VALIGN => 'TOP', BGCOLOR => '#ccffcc');
+		output_situations();
+		endTag($out, 'TD');
+	    }
+	    endTag($out, 'TR');
+	    endTag($out, 'TABLE');
+	} elsif ($elem =~ /$cregex/) {
+	    my $at = pop @Stack;
+	    dataElement($out, 'FONT', " $at] ", COLOR => 'blue');
+	}
+    };
+
+    sub Transcript {
+	my ($script) = @_;
+	my $stem = $script;
+	$stem =~ s/\.xml$//;
+	
+        Emotion::set_transcript($script);
+	
+	open $out, ">$stem.html";
+	
+	doctype($out, "HTML", "-//W3C//DTD HTML 4.0 Transitional//EN", '');
+	startTag($out, 'HTML');
+	
+	my $p = XML::Parser->new(ErrorContext => 1);
+	$p->setHandlers(Char => \&text,
+			Start => \&transcript_start,
+			End => \&transcript_end);
+	set_text_dest($out);
+	$p->parsefile($script);
+	
+	dataElement($out, 'HR', '');
+	dataElement($out, 'P', "$0 v$VERSION ".localtime());
+	
+	endTag($out, 'BODY');
+	endTag($out, 'HTML');
+	print $out "\n";
+	close $out;
+
+	print "unresolved: ";
+	for my $o (sort { $a->{dialog_id} <=> $b->{dialog_id} }
+		 Emotion::unresolved()) {
+	    print $o->label . ' ';
+	}
+	print "\n";
+    }
+}
+
+################ index
+
+{
+    my $Title;
+    my %Emotion;
+    my %Character;
+    my %Pair;
+
+    sub index_start {
+	my ($expat, $elem, %attr) = @_;
+	if ($elem eq 'title') {
+	    set_text_dest('save');
+	} elsif ($elem eq 'script') {
+	    # ok
+	} elsif ($elem =~ m/^i$/i) {
+	    # OK
+	} elsif ($elem eq 'scene') {
+	} elsif ($elem eq 'talk') {
+	    Emotion::set_speaker($attr{who});
+	  } elsif ($elem =~ /$cregex/) {
+	      $attr{type} = $elem;
+	      my $o = Emotion::Atom->new($expat, \%attr);
+	      push @{ $Emotion{ $o->hash } }, $o;
+	      ++$Character{$o->{left}};
+	      ++$Character{$o->{right}};
+	      push @{ $Pair{ join(':', sort $o->{left}, $o->{right}) } }, $o;
+	  } else {
+	      warn "tag `$elem' ignored";
+	  }
+    }
+
+    sub index_end {
+	my ($expat, $elem) = @_;
+	if ($elem eq 'title') {
+	    $Title = set_text_dest();
+	}
+    }
+
+    sub show_atom {
+	my ($out, $i) = @_;
+
+	my $type = $i->{type};
+	for my $phase (qw(before after intensity tension)) {
+	    next if !exists $i->{$phase};
+	    characters($out, "$phase=$i->{$phase}");
+	    last;
+	}
+    
+	characters($out, ' ');
+    
+	if ($type eq 'ready') {
+	    characters($out, "[0] and [0] are at readiness");
+	} elsif ($type eq 'observes') {
+	    characters($out, "[0] observes [-]");
+	} elsif ($type eq 'uneasy') {
+	    characters($out, "[-] is made uneasy by [0]");
+	} elsif ($type eq 'destroys') {
+	    dataElement($out, 'B', "[-]");
+	    characters($out, " destroys [-]");
+	} elsif ($type eq 'impasse') {
+	    dataElement($out, 'B', "[+]");
+	    characters($out, " and [+] are at an impasse");
+	} else {
+	    my $init = $i->{initiator};
+	    my $pretty = $type;
+	    $pretty = "steals from"
+		if $pretty eq 'steals';
+	    my ($left,$right);
+	    if ($type eq 'steals') { $left='-'; $right='+'; }
+	    elsif ($type eq 'exposes') { $left='+'; $right='-'; }
+	    elsif ($type eq 'accepts') { $left='0'; $right='+'; }
+	    elsif ($type eq 'admires') { $left='+'; $right='0'; }
+	    else { die $type }
+	    
+	    if ($init eq 'left') {
+		dataElement($out, 'B', "[$left]");
+		characters($out, " $pretty [$right]");
+	    } else {
+		characters($out, "[$left] $pretty ");
+		dataElement($out, 'B', "[$right]");
+	    }
+	}
+    }
+    
+    sub pair_index {
+	my ($stem) = @_;
+	$stem =~ s/\.xml$//;
+	open my $out, ">${stem}-pair.html";
+
+	doctype($out, "HTML", "-//W3C//DTD HTML 4.0 Transitional//EN", '');
+	startTag($out, 'HTML');
+	startTag($out, 'HEAD');
+	dataElement($out, 'TITLE', "$Title / Character Index");
+	endTag($out, 'HEAD');
+	startTag($out, 'BODY', bgcolor=>"#FFFFFF", text=>"#000000");
+
+	dataElement($out, 'P', "All characters appearing in annotations are
+listed in alphabetical order.  Click on a character to see a list of
+rival counterparties.");
+
+	startTag($out, 'P');
+	for my $who (sort keys %Character) {
+	    dataElement($out, 'A', $who, HREF => "#$who");
+	    characters($out, ' ');
+	}
+	endTag($out);
+
+	dataElement($out, 'P', "Each character is listed in order of
+frequency of his or her involvement in competition situations.
+Click on a counterparty to show grid offering links to the specific
+situations.");
+
+	my @C = sort { $Character{$b} <=> $Character{$a} } keys %Character;
+	for my $who (@C) {
+	    dataElement($out, 'A', $who, NAME => $who);
+	    characters($out," vs");
+	    for my $mix (@C) {
+		my $k = join(':', sort $who, $mix);
+		next if !exists $Pair{$k};
+		characters($out, ' ');
+		dataElement($out, 'A', $mix, HREF => '#'.join(':', $who, $mix));
+	    }
+	    emptyTag($out, 'BR');
+	}
+	
+	dataElement($out, 'P', "For each pair of rivals, their
+involvement in competition is organized by the initiator (shown in bold).
+Situations without a clear-cut initiator are listed in both tables.");
+
+	for my $pair (sort keys %Pair) {
+	    my $l = $Pair{$pair};
+	    my $z = $l->[0];
+	    my @pair = sort $z->{left}, $z->{right};
+	    startTag($out, 'P');
+	    for (my $rev=0; $rev <= 1; $rev++) {
+		if ($rev) {
+		    emptyTag($out, 'BR');
+		}
+		startTag($out, 'A', NAME => join(':', @pair));
+		if (!$rev) {
+		    dataElement($out, 'B', $pair[0]);
+		} else {
+		    characters($out, $pair[0]);
+		}
+		characters($out, ' <---> ');
+		if ($rev) {
+		    dataElement($out, 'B', $pair[1]);
+		} else {
+		    characters($out, $pair[1]);
+		}
+		endTag($out, 'A');
+
+		startTag($out, 'TABLE', BORDER => 1);
+		my @todo = qw(destroys exposes observes
+			      steals impasse accepts
+			      uneasy admires ready);
+		for (my $y=0; $y < 3; $y++) {
+		    startTag($out, 'TR');
+		    for (my $x=0; $x < 3; $x++) {
+			startTag($out, 'TD', VALIGN => 'TOP');
+			my $type = shift @todo;
+			characters($out, "$type:");
+			for my $i (@$l) {
+			    next if $i->{type} ne $type;
+			    my $init = $i->initiator;
+			    next if $init && $init ne $pair[0];
+			    characters($out, ' ');
+			    dataElement($out, 'A', "$i->{stem}$i->{dialog_id}.$i->{phrase_id}",
+					      HREF => "$i->{stem}.html#l$i->{dialog_id}",
+					  TARGET => "$i->{stem}");
+			}
+			endTag($out, 'TD');
+		    }
+		    endTag($out, 'TR');
+		}
+		endTag($out, 'TABLE');
+	    }
+	    endTag($out, 'P');
+	}
+
+	dataElement($out, 'HR', '');
+	dataElement($out, 'P', "$0 v$VERSION ".localtime());
+
+	endTag($out, 'BODY');
+	endTag($out, 'HTML');
+	print $out "\n";
+	close $out;
+    }
+
+    sub emotion_index {
+	open my $out, ">empathy.html";
+	doctype($out, "HTML", "-//W3C//DTD HTML 4.0 Transitional//EN", '');
+	startTag($out, 'HTML');
+	startTag($out, 'HEAD');
+	dataElement($out, 'TITLE', "Empathy Index");
+	endTag($out, 'HEAD');
+	startTag($out, 'BODY', bgcolor=>"#FFFFFF", text=>"#000000");
+
+	{
+	    my $col=0;
+	    startTag($out, 'P');
+	    startTag($out, 'TABLE', 'BORDER' => 1);
+	    startTag($out, 'TR');
+	    my %map;
+	    for my $key (keys %Emotion) {
+		push @{ $map{ $Emotion{$key}[0]->emotion } }, $key;
+	    }
+	    for my $emotion (sort keys %map) {
+		startTag($out, 'TD');
+		characters($out, $emotion);
+		my @variety = @{ $map{$emotion} };
+		my $x=0;
+		for my $type (sort @variety) {
+		    characters($out, ' ');
+		    dataElement($out, 'A', ++$x, HREF => '#'.$type);
+		}
+		endTag($out);
+		
+		$col = ($col+1) % 5;
+		if ($col == 0) {
+		    endTag($out, 'TR');
+		    startTag($out, 'TR');
+		}
+	    }
+	    endTag($out, 'TR');
+	    endTag($out);
+	    endTag($out, 'P');
+	}
+
+	emptyTag($out, 'HR');
+
+	my $type='';
+	for my $key (sort keys %Emotion) {
+	    my $list = $Emotion{$key};
+	    my $i = $list->[0];
+
+	    if ($type ne $i->{type}) {
+		$type = $i->{type};
+		dataElement($out, 'B', $type);
+	    }
+
+	    startTag($out, 'P');
+	    dataElement($out, 'A', $i->emotion, NAME => "$key");
+
+	    characters($out, ' : ');
+	    show_atom($out, $i);
+
+	    if (exists $i->{answer}) {
+		dataElement($out, 'I', ' answering ');
+		show_atom($out, $i->{answer});
+	    }
+
+	    for my $o (@$list) {
+		characters($out, ' ');
+		dataElement($out, 'A', "$o->{stem}$o->{dialog_id}.$o->{phrase_id}",
+			      HREF => "$o->{stem}.html#l$o->{dialog_id}",
+			      TARGET => "$o->{stem}");
+	    }
+	    
+	    endTag($out, 'P');
+	}
+
+	dataElement($out, 'HR', '');
+	dataElement($out,'P', "$0 v$VERSION ".localtime());
+
+	endTag($out, 'BODY');
+	endTag($out, 'HTML');
+	print $out "\n";
+    }
+
+    sub Index {
+	for my $script (@_) {
+	      Emotion::set_transcript($script);
+	      %Pair = ();
+	      %Character = ();
+
+	      my $p = XML::Parser->new(ErrorContext => 1);
+	      $p->setHandlers(Start => \&index_start,
+			      End => \&index_end,
+			      Char => \&text);
+	      $p->parsefile($script);
+	      
+	      pair_index($script);
+	  }
+	
+	emotion_index();
+    }
+}
+
+sub usage {
+    print "usage: empathize <script>
+       empathize --index <script> [<script> ...]
+
+       --help     this message
+       --version  show version and exit
+";
+    exit;
+}
+
+while (@ARGV and $ARGV[0] =~ m/^-/) {
+    my $opt = shift @ARGV;
+    if ($opt eq '--version') {
+	print "$0 v$VERSION
+";
+	exit;
+    } elsif ($opt eq '--index') {
+	$opt{index}=1;
+    } elsif ($opt eq '--help') {
+	usage();
+    } else {
+	warn "ignoring `$opt'";
+	usage();
+    }
+}
+
+if ($opt{index}) {
+    usage()
+	if !@ARGV;
+    Index(@ARGV);
+} else {
+    usage()
+	if @ARGV != 1;
+    Transcript($ARGV[0]);
+}

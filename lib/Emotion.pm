@@ -12,7 +12,7 @@
 
 use strict;
 package Emotion;
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 
 our $Stem;
 our $DialogID;
@@ -82,7 +82,7 @@ sub new {
     $expat->xpcroak("reply renamed to answer")
 	if exists $o->{reply};
 
-    for my $kind (qw(revoke closing context answer)) {
+    for my $kind (qw(echo revoke closing context answer)) {
 	next if !exists $o->{$kind};
 	my $to = $o->{$kind};
 	$o->{$kind} = $Link{$to};
@@ -157,7 +157,7 @@ sub new {
 
     if (exists $o->{absent}) {
 	$expat->xpcroak("$o->{absent} can't be absent")
-	    if $type =~ m/^(ready|observes|uneasy|impasse|destroys)$/;
+	    if $type =~ m/^(ready|observes|uneasy|destroys)$/;
 	$expat->xpcroak("initiator is absent?")
 	    if $o->{absent} eq $o->{initiator};
 	$expat->xpcroak("absent `$o->{absent}' is left or right?")
@@ -181,9 +181,37 @@ sub new {
     $expat->xpcroak("$o->{left} competing with himself/herself")
 	if $o->{left} eq $o->{right};
 	
+    if ($type eq 'impasse') {
+	$expat->xpcroak("impasse to what?")
+	    if (!exists $o->{answer} and !exists $o->{echo} and
+		!exists $o->{absent});
+	$expat->xpcroak("answer *and* echo?")
+	    if exists $o->{answer} && exists $o->{echo};
+	my $re = $o->{answer} || $o->{echo};
+	if ($re) {
+	    my $aty = $re->{type};
+	    $expat->xpcroak("impasse to `$aty'?")
+		if $aty =~ m/^(observes|uneasy)$/;
+	}
+    }
+
+    if (exists $o->{echo}) {
+	my $re = $o->{echo};
+
+	my $i1 = $re->initiator;
+	my $i2 = $o->initiator;
+	$expat->xpcroak("echo but initiator switched `$i1'->`$i2'?")
+	    if $i1 ne $i2;
+	
+	$expat->xpcarp("$o->{left} not in answer")
+	    if ($o->{left} ne $re->{left} and $o->{left} ne $re->{right});
+	$expat->xpcarp("$o->{right} not in answer")
+	    if ($o->{right} ne $re->{left} and $o->{right} ne $re->{right});
+    }
+
     if (exists $o->{answer}) {
 	my $re = $o->{answer};
-	$expat->xpcroak("can't answer to readiness")
+	$expat->xpcroak("can't answer readiness")
 	    if $re->{type} eq 'ready';
 	
 	$expat->xpcarp("$o->{left} not in answer")
@@ -203,7 +231,7 @@ sub new {
 		$re->{initiator} = $i2 eq 'left'? 'right':'left';
 	    }
 	} elsif ($i1 eq $i2) {
-	    $expat->xpcarp("$i1 kept the initiator")
+	    $expat->xpcroak("$i1 kept the initiative")
 	}
     }
 
@@ -519,7 +547,7 @@ sub emotion {     # over-simplification
 		    } elsif ($te eq 'relaxed') {
 			'acknowledge impasse';
 		    } else {
-			'concede impasse';
+			'exasperated / concede';
 		    }
 		} elsif ($aty eq 'steals') {
 		    if ($te eq 'focused') {
@@ -601,12 +629,22 @@ sub emotion {     # over-simplification
 	}
     } elsif ($ty eq 'impasse') {
 	my $te = $o->{tension};
-	if ($te eq 'focused') {
-	    'stubborn / frustrated / indignant';
-	} elsif ($te eq 'relaxed') {
-	    'probe / sincere and balanced concern';
+	if (exists $o->{absent}) {
+	    if ($te eq 'focused') {
+		'frustrated by absence';
+	    } elsif ($te eq 'relaxed') {
+		'signal absence';
+	    } else {
+		'mourn absence';
+	    }
 	} else {
-	    'separation';
+	    if ($te eq 'focused') {
+		'stubborn / frustrated / indignant';
+	    } elsif ($te eq 'relaxed') {
+		'probe / sincere and balanced concern';
+	    } else {
+		'separation';
+	    }
 	}
     } else { '?' }
 }

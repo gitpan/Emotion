@@ -1,29 +1,26 @@
-impasse cannot be in answer to ready|observes|uneasy|nothing
-
 context and closing must accept multiple situations (answer too?)
 
 convert left/right -> L/R
 
-echo
-  impasse id=a1
-  impasse echo=a1 absent=right
-
-merge prepare_* into a single command-line tool
-  empathize --index ...
+index should respect absent
 
 duration index
 
+--
+
 rename "context"?
+
+"echo" is too specific?
 
 <alias newtag="demands" basetag="accepts" before="focused" initiator="right"
 />
+
+--
 
 "The criteria for whether the markup is detailed enough is whether it
 delineates single emotions."
 
 A one-to-one mapping of *fully detailed markup* to emotion. 
-
-
 
    Hmm: The POD is for emotions, yet you only define markups for competition
    events. Are you saying that there is a one-to-one mapping from competition
@@ -35,3 +32,5 @@ A one-to-one mapping of *fully detailed markup* to emotion.
    The question is: into how many slices must we
    divide the timeline such that each slice is
    exactly one emotion?
+
+http://www.script-o-rama.com/table.shtml

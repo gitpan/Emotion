@@ -1,39 +1,22 @@
 =head1 NAME
 
-Emotion - discrete emotion annotation processing library
+Emotion - discrete emotion annotation processing
 
 =head1 SYNOPSIS
 
-This document describes the XML representation of 3rd person
-annotations, validation rules, and how the information is represented
-in perl for further processing.
+  empathize <script>
+  empathize --index <script> [<script> ...]
 
 =head1 DESCRIPTION
 
-Most of the complexity of this module resides in learning how to
-annotate free-form text with information about what competition is
-taking place.  If you haven't studied http://ghost-wheel.net then go
-do that first.
+The most difficult part of this module is learning how to annotate
+free-form text with information about what competition is taking
+place.  If you haven't studied http://ghost-wheel.net then go do that
+first.
 
-=over 4
-
-=item * Emotion::set_transcript($xml_file)
-
-=item * my $dialog_id = Emotion::set_speaker($who)
-
-=item * my @pending = Emotion::unresolved()
-
-=back
-
-=head2 Emotion::Atom Methods
-
-=over 4
-
-=item * my $situation = Emotion::Atom->new($expat, $attr)
-
-=item * my $emotion = $atom->emotion;
-
-=back
+The first part of this document describes the XML representation of
+3rd person annotations and validation rules.  The second part
+describes the perl API.
 
 =head1 XML TUTORIAL
 
@@ -170,7 +153,7 @@ ambiguity:
 
 Now the situations can be distinguish.  While the annotation is
 precise, it is also quite a lot of typing.  To reduce the burden on
-the analyst, the library is capable of guessing reasonable defaults by
+the analyst, the parser is capable of guessing reasonable defaults by
 consideration of who is talking.  For example:
 
   <accepts left="chef" initiator="child" before="focused">
@@ -278,7 +261,7 @@ specific classification is not available.
 
 =head2 Resolution
 
-The library tries to keep track of situations which remain unresolved
+The parser tries to keep track of situations which remain unresolved
 (or pending).  For example:
 
   <accepts id="o1" initiator="clerk" left="Joey" before="focused">
@@ -306,7 +289,7 @@ situation is absent.  Here is an example:
   </talk>
 
 In fact, the teacher may never know whether the situation was
-really C<accepts>, C<observes>, or even merely:
+truly C<accepts>, C<observes>, or even merely:
 
   <ready intensity="gentle" left="students" right="teacher">
     The students are intermittently aware that the
@@ -314,8 +297,30 @@ really C<accepts>, C<observes>, or even merely:
   </ready>
 
 Notice that the C<absent> attribute is unnecessary in this case.  A
-variety of situations do not trigger the need for resolution, and
+variety of situations do not trigger the need for any resolution, and
 C<ready> is one of them.
+
+=head1 EMOTION LIBRARY API
+
+=over 4
+
+=item * Emotion::set_transcript($xml_file)
+
+=item * my $dialog_id = Emotion::set_speaker($who)
+
+=item * my @pending = Emotion::unresolved()
+
+=back
+
+=head2 Emotion::Atom Methods
+
+=over 4
+
+=item * my $situation = Emotion::Atom->new($expat, $attr)
+
+=item * my $emotion = $atom->emotion;
+
+=back
 
 =cut
 
