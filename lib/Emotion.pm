@@ -17,7 +17,7 @@
 
 use strict;
 package Emotion;
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 
 our $Stem;
 our $DialogID;
@@ -207,12 +207,12 @@ sub new {
 	if ($re) {
 	    my $aty = $re->{type};
 	    $expat->xpcroak("impasse to `$aty'?")
-		if $aty =~ m/^(observes|uneasy)$/;
+		if $aty =~ m/^(observes|ready)$/;
 	}
     }
 
     if (exists $o->{echo}) {
-	# are the constraints are wrong?
+	# are the constraints okay?
 	# initiator doesn't matter but victim should match?
 
 	my $re = $o->{echo};
@@ -277,7 +277,7 @@ sub new {
 	}
 
 	$expat->xpcroak($am->victim." ne ".$o->victim)
-	    if $am->victim ne $o->victim;
+	    if $am->victim ne '*' && $am->victim ne $o->victim;
     }
 
     if (exists $o->{revoke}) {
@@ -302,11 +302,16 @@ sub new {
 	}
     }
     if (exists $o->{echo}) {
-	my $label = $o->{echo}->label;
-	if (delete $Open{ $label }) {
-	    # OK
+	my $ec = $o->{echo};
+	my $label = $ec->label;
+	if ($o->initiator eq $ec->initiator) {
+	    if (delete $Open{ $label }) {
+		# OK
+	    } else {
+		$expat->xpcarp("amend echo=$label");
+	    }
 	} else {
-	    $expat->xpcarp("amend echo=$label");
+	    # joinder OK
 	}
     }
     if (exists $o->{re}) {
@@ -317,12 +322,16 @@ sub new {
 	} else {
 	    if ($re->{type} eq 'admires' and $re->{before}) {
 		# OK
-	    } elsif ($re->{type} eq 'observes') {
+	    } elsif ($re->{type} eq 'accepts' and $re->{tension}) {
+		# OK
+	    } elsif ($re->{type} =~ m/^(observes|uneasy)$/) {
 		# OK
 	    } elsif ($re->victim eq '*') {
 		# OK
+	    } elsif ($type eq 'admires' and $o->{before}) {
+		# OK
 	    } else {
-		$expat->xpcarp("amend $label");
+		$expat->xpcarp("amend re=$label");
 	    }
 	}
     }
@@ -430,10 +439,10 @@ sub emotion {
     my ($o) = @_;
     my $ty = $o->{type};
     my $re;
-    my $aty = '';
+    my $rety = '';
     if (exists $o->{re}) {
 	$re = $o->{re};
-	$aty = $re->{type};
+	$rety = $re->{type};
     }
     my $context;  # try to avoid for classification purposes
     my $cty = '';
@@ -468,7 +477,7 @@ sub emotion {
 		if ($te eq 'relaxed') {
 		    'researching';
 		} else { '?' }
-	    } elsif (!$aty or $aty eq 'exposes') {
+	    } elsif (!$rety or $rety eq 'exposes') {
 		my $te = $o->{tension};
 		if ($te eq 'focused') {
 		    'hatred';
@@ -477,7 +486,7 @@ sub emotion {
 		} else {
 		    'embarrassment / denial';
 		}
-	    } elsif ($aty eq 'accepts' and exists $re->{before}) {
+	    } elsif ($rety eq 'accepts' and exists $re->{before}) {
 		my $te = $o->{tension};
 		if ($te eq 'focused') {
 		    '?';
@@ -511,7 +520,7 @@ sub emotion {
 	    }
 	} else {
 	    my $te = $o->{tension};
-	    if (!$aty or $aty eq 'steals') {
+	    if (!$rety or $rety eq 'steals') {
 		if ($te eq 'focused') {
 		    'angry at thief';
 		} elsif ($te eq 'stifled') {
@@ -519,7 +528,7 @@ sub emotion {
 		} else {
 		    'detached indifference';
 		}
-	    } elsif ($aty eq 'accepts' and exists $re->{before}) {
+	    } elsif ($rety eq 'accepts' and exists $re->{before}) {
 		if ($te eq 'focused') {
 		    'accusal';
 		} elsif ($te eq 'stifled') {
@@ -527,12 +536,21 @@ sub emotion {
 		} else {
 		    'detached indifference';
 		}
-	    } elsif ($aty eq 'exposes') {
+	    } elsif ($rety eq 'exposes') {
 		if ($te eq 'focused') {
 		    'doubtless righteousness';
 		} elsif ($te eq 'relaxed') {
 		    'purified desire';
 		} else { '?' }
+	    } elsif ($rety eq 'impasse' and $re->{tension} eq 'focused') {
+		my $te = $o->{tension};
+		if ($te eq 'focused') {
+		    'belligerent / shy';
+		} elsif ($te eq 'relaxed') {
+		    '(wince / shy / belligerent / silent)';
+		} else {
+		    'crumpled / shy';
+		}
 	    } else { '?' }
 	}
     } elsif ($ty eq 'admires') {
@@ -553,16 +571,29 @@ sub emotion {
 		} else { '?' }
 	    }
 	} else {
-	    my $te = $o->{tension};
-	    if (!$aty or $aty eq 'admires') {
+	    if (exists $o->{before}) {
+		my $te = $o->{before};
 		if ($te eq 'focused') {
-		    'awe / offer service';
+		    'mocking';
 		} elsif ($te eq 'relaxed') {
-		    'made whole';
+		    'insulting';
 		} else {
-		    'whether to become hooked / stuggle to discriminate';
+		    'euphemism';
 		}
-	    } else { '?' }
+	    } elsif (exists $o->{after}) {
+		'?';
+	    } else {
+		my $te = $o->{tension};
+		if (!$rety or $rety eq 'admires') {
+		    if ($te eq 'focused') {
+			'awe / offer service';
+		    } elsif ($te eq 'relaxed') {
+			'made whole';
+		    } else {
+			'whether to become hooked / stuggle to discriminate';
+		    }
+		} else { '?' }
+	    }
 	}
     } elsif ($ty eq 'accepts') {
 	if ($o->{initiator} eq 'right') {
@@ -582,12 +613,12 @@ sub emotion {
 		} elsif ($te eq 'relaxed') {
 		    'relief';
 		} else {
-		    if (!$aty) {
+		    if (!$rety) {
 			'?'
-		    } elsif ($aty eq 'accepts' and exists $re->{before} and
+		    } elsif ($rety eq 'accepts' and exists $re->{before} and
 			$re->{before} eq 'focused') {
 			'dubious about a candid assertion';
-		    } elsif ($aty eq 'observes' and
+		    } elsif ($rety eq 'observes' and
 			     $re->{intensity} eq 'gentle') {
 			'dubious about a brush-off reply';
 		    } else {
@@ -601,7 +632,7 @@ sub emotion {
 	    if (exists $o->{before}) {
 		my $te = $o->{before};
 		if ($te eq 'focused') {
-		    if ($aty eq 'impasse' and 
+		    if ($rety eq 'impasse' and 
 			$re->{tension} eq 'relaxed') {
 			'guess the riddle';
 		    } else {
@@ -612,7 +643,7 @@ sub emotion {
 		} else { '?' }
 	    } elsif (exists $o->{after}) {
 		my $te = $o->{after};
-		if ($aty eq 'accepts') {
+		if ($rety eq 'accepts') {
 		    if ($te eq 'focused') {
 			'balloon enthusiasm out of control';
 		    } elsif ($te eq 'stifled') {
@@ -621,7 +652,7 @@ sub emotion {
 		} else { '?' }
 	    } else {
 		my $te = $o->{tension};
-		if (!$aty) {
+		if (!$rety) {
 		    if ($te eq 'focused') {
 			'it is done';
 		    } elsif ($te eq 'relaxed') {
@@ -629,13 +660,13 @@ sub emotion {
 		    } else {
 			'?';
 		    }
-		} elsif ($aty eq 'accepts') {
+		} elsif ($rety eq 'accepts') {
 		    if ($te eq 'focused') {
 			'seems to accept';
 		    } elsif ($te eq 'relaxed') {
 			'embraces wish';
 		    } else { '?' }
-		} elsif ($aty eq 'impasse') {
+		} elsif ($rety eq 'impasse') {
 		    if ($te eq 'focused') {
 			'cheer impasse';
 		    } elsif ($te eq 'relaxed') {
@@ -643,7 +674,7 @@ sub emotion {
 		    } else {
 			'exasperated / concede';
 		    }
-		} elsif ($aty eq 'steals') {
+		} elsif ($rety eq 'steals') {
 		    if ($te eq 'focused') {
 			'convert to admiration';
 		    } elsif ($te eq 'relaxed') {
@@ -651,7 +682,7 @@ sub emotion {
 		    } else {
 			'convert to uneasy';
 		    }
-		} elsif ($aty eq 'exposes') {
+		} elsif ($rety eq 'exposes') {
 		    if ($te eq 'focused') {
 			'whoops!';
 		    } elsif ($te eq 'relaxed') {
@@ -665,7 +696,7 @@ sub emotion {
     } elsif ($ty eq 'destroys') {
 	'death';
     } elsif ($ty eq 'uneasy') {
-	if (!$aty) {
+	if (!$rety) {
 	    my $in = $o->{intensity};
 	    if ($in eq 'gentle') {
 		'nervousness';
@@ -674,14 +705,14 @@ sub emotion {
 	    } else {
 		'sleepless agony';
 	    }
-	} elsif ($aty eq 'accepts' and exists $re->{before} and
+	} elsif ($rety eq 'accepts' and exists $re->{before} and
 		 $re->{before} eq 'focused' and
 		 $re->{initiator} eq 'right') {
 	    my $in = $o->{intensity};
 	    if ($in eq 'gentle') {
 		'caught red-handed';
 	    } else { '?' }
-	} elsif ($aty eq 'accepts' and exists $re->{before} and
+	} elsif ($rety eq 'accepts' and exists $re->{before} and
 		 $re->{before} eq 'focused' and
 		 $re->{initiator} eq 'left') {
 	    my $in = $o->{intensity};
@@ -695,7 +726,7 @@ sub emotion {
 	} else { '?' }
     } elsif ($ty eq 'observes') {
 	my $in = $o->{intensity};
-	if (!$aty) {
+	if (!$rety) {
 	    if ($in eq 'gentle') {
 		'excitement';
 	    } elsif ($in eq 'forceful') {
@@ -703,7 +734,7 @@ sub emotion {
 	    } else {
 		'challenge of emotional insight';
 	    }
-	} elsif ($aty eq 'accepts') {
+	} elsif ($rety eq 'accepts') {
 	    if ($in eq 'gentle') {
 		'seems to accept';
 	    } elsif ($in eq 'forceful') {
@@ -711,7 +742,7 @@ sub emotion {
 	    } else {
 		'blasts her with silent force'
 	    }
-	} elsif ($aty eq 'exposes' and ($re->{before}||'?') eq 'focused') {
+	} elsif ($rety eq 'exposes' and ($re->{before}||'?') eq 'focused') {
 	    if ($in eq 'gentle') {
 		'threaten';
 	    } elsif ($in eq 'forceful') {
@@ -719,11 +750,11 @@ sub emotion {
 	    } else {
 		'?';
 	    }
-	} elsif ($aty eq 'impasse' and $re->{tension} eq 'focused') {
+	} elsif ($rety eq 'impasse' and $re->{tension} eq 'focused') {
 	    if ($in eq 'gentle') {
 		'amused by impasse';
 	    } else { '?' }
-	} elsif ($aty eq 'impasse' and $re->{tension} eq 'relaxed') {
+	} elsif ($rety eq 'impasse' and $re->{tension} eq 'relaxed') {
 	    if ($in eq 'gentle') {
 		'amused by counteroffer';
 	    } else { '?' }
